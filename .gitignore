@@ -1,0 +1,12 @@
+echo # Dependencies > .gitignore
+echo **/node_modules/ >> .gitignore
+echo **/vendor/ >> .gitignore
+echo **/.env >> .gitignore
+echo **/.next/ >> .gitignore
+echo **/storage/ >> .gitignore
+echo **/logs/ >> .gitignore
+echo **/*.log >> .gitignore
+echo .idea/ >> .gitignore
+echo .vscode/ >> .gitignore
+echo **/db-data/ >> .gitignore
+echo **/data/ >> .gitignore
