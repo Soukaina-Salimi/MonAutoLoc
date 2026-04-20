@@ -5,515 +5,542 @@ import api from "@/lib/api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Mail, Lock, UserPlus, LogIn, Car, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  User, Mail, Lock, UserPlus, LogIn,
+  Car, Eye, EyeOff, CheckCircle, AlertCircle,
+  Truck, Package, Luggage,
+} from "lucide-react";
 
-// Interface pour la réponse d'inscription
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ServiceType = "location" | "transport_bagages" | "livraison_colis" | "demenagement";
+
+interface ServiceOption {
+  id: ServiceType;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+}
+
 interface RegisterResponse {
-    access_token: string;
-    user: {
-        id: number;
-        name: string;
-        email: string;
-        role: {
-            id: number;
-            name: string;
-        };
-    };
+  token: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    profile_completed: boolean;
+    role: { id: number; name: string };
+    owner_services: { service_type: ServiceType }[];
+  };
 }
 
-// Interface pour les erreurs
-interface ApiError {
-    response?: {
-        data?: {
-            message?: string;
-            errors?: Record<string, string[]>;
-        };
-        status?: number;
-    };
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const SERVICE_OPTIONS: ServiceOption[] = [
+  {
+    id: "location",
+    label: "Location de véhicules",
+    icon: Car,
+    description: "Voitures, motos, camions, scooters…",
+  },
+  {
+    id: "transport_bagages",
+    label: "Transport de bagages",
+    icon: Luggage,
+    description: "Aéroport, gare, hôtel…",
+  },
+  {
+    id: "livraison_colis",
+    label: "Livraison de colis",
+    icon: Package,
+    description: "E-commerce, particuliers…",
+  },
+  {
+    id: "demenagement",
+    label: "Déménagement",
+    icon: Truck,
+    description: "Meubles, cartons, distance…",
+  },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getStrengthColor(s: number) {
+  return ["bg-gray-200", "bg-red-500", "bg-yellow-500", "bg-green-500", "bg-green-600"][s];
 }
+
+function getStrengthLabel(s: number) {
+  return ["", "Faible", "Moyen", "Fort", "Très fort"][s];
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
-    const [name, setName] = useState<string>("");
-    const [email, setEmail] = useState<string>("");
-    const [password, setPassword] = useState<string>("");
-    const [confirmPassword, setConfirmPassword] = useState<string>("");
-    const [roleId, setRoleId] = useState<number>(3);
-    const [showPassword, setShowPassword] = useState<boolean>(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [acceptTerms, setAcceptTerms] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [passwordStrength, setPasswordStrength] = useState<number>(0);
+  const router = useRouter();
 
-    const router = useRouter();
+  // form fields
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<"client" | "owner">("client");
 
-    // Vérifier si l'utilisateur est déjà connecté
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        const userStr = localStorage.getItem("user");
+  // ✅ FIX: tableau multi-sélection, valeurs correspondant aux enums backend
+  const [selectedServices, setSelectedServices] = useState<ServiceType[]>(["location"]);
 
-        if (token && userStr) {
-            try {
-                const user = JSON.parse(userStr);
-                redirectBasedOnRole(user.role.name);
-            } catch (error) {
-                console.error("Error parsing user:", error);
-            }
-        }
-    }, []);
+  // ui state
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [passwordStrength, setPasswordStrength] = useState(0);
 
-    // Calculer la force du mot de passe
-    useEffect(() => {
-        let strength = 0;
-        if (password.length >= 8) strength += 1;
-        if (/[A-Z]/.test(password)) strength += 1;
-        if (/[0-9]/.test(password)) strength += 1;
-        if (/[^A-Za-z0-9]/.test(password)) strength += 1;
-        setPasswordStrength(strength);
-    }, [password]);
+  // redirect if already logged in
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const userStr = localStorage.getItem("user");
+    if (token && userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        redirectByRole(user.role.name, user.profile_completed);
+      } catch {}
+    }
+  }, []);
 
-    const redirectBasedOnRole = (role: string) => {
-        if (role === "admin") {
-            router.push("/admin/dashboard");
-        } else if (role === "owner") {
-            router.push("/owner/dashboard");
-        } else {
-            router.push("/dashboard");
-        }
-    };
+  // password strength
+  useEffect(() => {
+    let s = 0;
+    if (password.length >= 8) s++;
+    if (/[A-Z]/.test(password)) s++;
+    if (/[0-9]/.test(password)) s++;
+    if (/[^A-Za-z0-9]/.test(password)) s++;
+    setPasswordStrength(s);
+  }, [password]);
 
-    const handleLogin = () => {
-        router.push("/login");
-    };
+  // reset services when switching role
+  useEffect(() => {
+if (role !== "owner") setSelectedServices(["location"]);
+  }, [role]);
 
-    const validateForm = (): boolean => {
-        if (!name || !email || !password || !confirmPassword) {
-            setError("Veuillez remplir tous les champs");
-            return false;
-        }
+  // ─── Helpers ────────────────────────────────────────────────────────────────
 
-        if (name.length < 2) {
-            setError("Le nom doit contenir au moins 2 caractères");
-            return false;
-        }
+  function redirectByRole(role: string, profileCompleted: boolean) {
+    if (role === "admin") { router.push("/admin/dashboard"); return; }
+    // ✅ FIX: si profile non complété → page de complétion de profil
+    if (!profileCompleted) { router.push("/complete-profile"); return; }
+    if (role === "owner") { router.push("/owner/dashboard"); return; }
+    router.push("/dashboard");
+  }
 
-        if (!/\S+@\S+\.\S+/.test(email)) {
-            setError("Format d'email invalide");
-            return false;
-        }
-
-        if (password.length < 6) {
-            setError("Le mot de passe doit contenir au moins 6 caractères");
-            return false;
-        }
-
-        if (password !== confirmPassword) {
-            setError("Les mots de passe ne correspondent pas");
-            return false;
-        }
-
-        if (!acceptTerms) {
-            setError("Vous devez accepter les conditions d'utilisation");
-            return false;
-        }
-
-        return true;
-    };
-
-    const handleRegister = async () => {
-        if (!validateForm()) return;
-
-        setIsLoading(true);
-        setError(null);
-
-        try {
-            const res = await api.post<RegisterResponse>("/register", {
-                name,
-                email,
-                password,
-                password_confirmation: confirmPassword,
-                role_id: roleId,
-            });
-
-            console.log("Registration success:", res.data);
-
-            const { access_token, user } = res.data;
-
-            // Stocker les informations
-            localStorage.setItem("token", access_token);
-            localStorage.setItem("user", JSON.stringify(user));
-
-            alert("✅ Inscription réussie !");
-
-            // Rediriger en fonction du rôle
-            redirectBasedOnRole(user.role.name);
-
-        } catch (error: any) {
-            console.error("Registration error:", error.response?.data);
-
-            // Gestion des erreurs spécifiques
-            if (error.response?.status === 422) {
-                const errors = error.response.data?.errors as Record<string, string[]>;
-
-                if (errors) {
-                    const firstError = Object.values(errors)[0]?.[0];
-                    setError(firstError || "Erreur de validation");
-                } else {
-                    setError("Données d'inscription invalides");
-                }
-
-            } else if (error.response?.status === 409) {
-                setError("Cet email est déjà utilisé");
-            } else if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else {
-                setError("Erreur lors de l'inscription. Veuillez réessayer.");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    // Obtenir la couleur de la force du mot de passe
-    const getPasswordStrengthColor = () => {
-        switch (passwordStrength) {
-            case 0: return "bg-gray-200";
-            case 1: return "bg-red-500";
-            case 2: return "bg-yellow-500";
-            case 3: return "bg-green-500";
-            case 4: return "bg-green-600";
-            default: return "bg-gray-200";
-        }
-    };
-
-    const getPasswordStrengthText = () => {
-        switch (passwordStrength) {
-            case 0: return "Très faible";
-            case 1: return "Faible";
-            case 2: return "Moyen";
-            case 3: return "Fort";
-            case 4: return "Très fort";
-            default: return "";
-        }
-    };
-
-    // Animation variants
-    const fadeInUp = {
-        initial: { opacity: 0, y: 20 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.5 }
-    };
-
-    const staggerContainer = {
-        animate: {
-            transition: {
-                staggerChildren: 0.1
-            }
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Éléments d'arrière-plan animés */}
-            <motion.div
-                animate={{
-                    scale: [1, 1.2, 1],
-                    rotate: [0, 90, 0],
-                }}
-                transition={{ duration: 20, repeat: Infinity }}
-                className="absolute top-20 left-20 w-64 h-64 bg-white/5 rounded-full blur-3xl"
-            />
-            <motion.div
-                animate={{
-                    scale: [1, 1.5, 1],
-                    rotate: [0, -90, 0],
-                }}
-                transition={{ duration: 25, repeat: Infinity }}
-                className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"
-            />
-
-
-            {/* Register Card */}
-            <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md p-8 relative z-10 max-h-[90vh] overflow-y-auto"
-            >
-                {/* Header */}
-                <motion.div
-                    variants={fadeInUp}
-                    initial="initial"
-                    animate="animate"
-                    className="text-center mb-6"
-                >
-                    <motion.div
-                        whileHover={{ scale: 1.1, rotate: 360 }}
-                        transition={{ duration: 0.5 }}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/30"
-                    >
-                        <Car className="w-10 h-10 text-white" />
-                    </motion.div>
-                    <h2 className="text-3xl font-bold text-gray-800 mb-2">Créer un compte</h2>
-                    <p className="text-gray-500">Rejoignez notre communauté de location de véhicules</p>
-                </motion.div>
-
-                {/* Message d'erreur */}
-                <AnimatePresence>
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex items-center"
-                        >
-                            <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                            {error}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {/* Form */}
-                <motion.div
-                    variants={staggerContainer}
-                    initial="initial"
-                    animate="animate"
-                    className="space-y-4"
-                >
-                    {/* Name Field */}
-                    <motion.div variants={fadeInUp} className="relative">
-                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <input
-                            type="text"
-                            placeholder="Nom complet"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
-                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                            disabled={isLoading}
-                        />
-                    </motion.div>
-
-                    {/* Email Field */}
-                    <motion.div variants={fadeInUp} className="relative">
-                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <input
-                            type="email"
-                            placeholder="Adresse email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
-                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                            disabled={isLoading}
-                        />
-                    </motion.div>
-
-                    {/* Password Field */}
-                    <motion.div variants={fadeInUp} className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <input
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Mot de passe"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
-                            className="w-full pl-10 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                            disabled={isLoading}
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        >
-                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                        </button>
-                    </motion.div>
-
-                    {/* Confirm Password Field */}
-                    <motion.div variants={fadeInUp} className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <input
-                            type={showConfirmPassword ? "text" : "password"}
-                            placeholder="Confirmer le mot de passe"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
-                            className="w-full pl-10 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                            disabled={isLoading}
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        >
-                            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                        </button>
-                    </motion.div>
-
-                    {/* Indicateur de force du mot de passe */}
-                    {password && (
-                        <motion.div
-                            variants={fadeInUp}
-                            className="space-y-2"
-                        >
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs text-gray-500">Force du mot de passe :</span>
-                                <span className="text-xs font-medium">{getPasswordStrengthText()}</span>
-                            </div>
-                            <div className="flex gap-1 h-1">
-                                {[1, 2, 3, 4].map((level) => (
-                                    <div
-                                        key={level}
-                                        className={`flex-1 rounded-full transition-all duration-300 ${level <= passwordStrength ? getPasswordStrengthColor() : 'bg-gray-200'
-                                            }`}
-                                    />
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                                <div className="flex items-center">
-                                    {password.length >= 6 ? (
-                                        <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                                    ) : (
-                                        <div className="w-3 h-3 mr-1" />
-                                    )}
-                                    6+ caractères
-                                </div>
-                                <div className="flex items-center">
-                                    {/[A-Z]/.test(password) ? (
-                                        <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                                    ) : (
-                                        <div className="w-3 h-3 mr-1" />
-                                    )}
-                                    Majuscule
-                                </div>
-                                <div className="flex items-center">
-                                    {/[0-9]/.test(password) ? (
-                                        <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                                    ) : (
-                                        <div className="w-3 h-3 mr-1" />
-                                    )}
-                                    Chiffre
-                                </div>
-                                <div className="flex items-center">
-                                    {/[^A-Za-z0-9]/.test(password) ? (
-                                        <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                                    ) : (
-                                        <div className="w-3 h-3 mr-1" />
-                                    )}
-                                    Spécial
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* Role Selection */}
-                    <motion.div variants={fadeInUp} className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                            Vous êtes ?
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {[
-                                { id: 3, label: "Client", icon: "👤" },
-                                { id: 2, label: "Owner", icon: "🚗" },
-                                { id: 1, label: "Admin", icon: "👑" }
-                            ].map((role) => (
-                                <motion.button
-                                    key={role.id}
-                                    type="button"
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={() => setRoleId(role.id)}
-                                    className={`py-2 px-2 rounded-xl border-2 transition-all duration-200 ${roleId === role.id
-                                        ? "border-blue-600 bg-blue-50 text-blue-600"
-                                        : "border-gray-200 hover:border-gray-300 text-gray-600"
-                                        }`}
-                                    disabled={isLoading}
-                                >
-                                    <div className="text-sm font-medium">{role.icon} {role.label}</div>
-                                </motion.button>
-                            ))}
-                        </div>
-                    </motion.div>
-
-                    {/* Role Info */}
-                    <motion.div
-                        variants={fadeInUp}
-                        className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-xl"
-                    >
-                        <p className="text-sm text-blue-600">
-                            {roleId === 1 && "👑 Administrateur : Accès complet à la gestion de la plateforme"}
-                            {roleId === 2 && "🚗 Propriétaire : Gérez vos véhicules et vos réservations"}
-                            {roleId === 3 && "👤 Client : Louez des véhicules et suivez vos réservations"}
-                        </p>
-                    </motion.div>
-
-                    {/* Terms and Conditions */}
-                    <motion.div variants={fadeInUp} className="flex items-start">
-                        <input
-                            type="checkbox"
-                            id="terms"
-                            checked={acceptTerms}
-                            onChange={(e) => setAcceptTerms(e.target.checked)}
-                            className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
-                            J'accepte les{" "}
-                            <Link href="/terms" className="text-blue-600 hover:underline">
-                                conditions d'utilisation
-                            </Link>{" "}
-                            et la{" "}
-                            <Link href="/privacy" className="text-blue-600 hover:underline">
-                                politique de confidentialité
-                            </Link>
-                        </label>
-                    </motion.div>
-
-                    {/* Register Button */}
-                    <motion.button
-                        variants={fadeInUp}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={handleRegister}
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-600/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                    >
-                        {isLoading ? (
-                            <div className="flex items-center">
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                                Inscription en cours...
-                            </div>
-                        ) : (
-                            <div className="flex items-center">
-                                <UserPlus className="w-5 h-5 mr-2" />
-                                S'inscrire
-                            </div>
-                        )}
-                    </motion.button>
-
-                    {/* Séparateur */}
-                    <motion.div variants={fadeInUp} className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-200"></div>
-                        </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-gray-500">Déjà inscrit ?</span>
-                        </div>
-                    </motion.div>
-
-                    {/* Login Button */}
-                    <motion.button
-                        variants={fadeInUp}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={handleLogin}
-                        disabled={isLoading}
-                        className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                    >
-                        <LogIn className="w-5 h-5 mr-2" />
-                        Se connecter
-                    </motion.button>
-                </motion.div>
-            </motion.div>
-        </div>
+  function toggleService(id: ServiceType) {
+    setSelectedServices((prev) =>
+      prev.includes(id)
+        ? prev.length === 1
+          ? prev                      // garde au moins 1 sélectionné
+          : prev.filter((s) => s !== id)
+        : [...prev, id]
     );
+  }
+
+  function validate(): boolean {
+    if (!name || !email || !password || !confirmPassword) {
+      setError("Veuillez remplir tous les champs"); return false;
+    }
+    if (name.trim().length < 2) {
+      setError("Le nom doit contenir au moins 2 caractères"); return false;
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError("Format d'email invalide"); return false;
+    }
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères"); return false;
+    }
+    if (password !== confirmPassword) {
+      setError("Les mots de passe ne correspondent pas"); return false;
+    }
+    if (!acceptTerms) {
+      setError("Vous devez accepter les conditions d'utilisation"); return false;
+    }
+        if (role === "owner" && selectedServices.length === 0) 
+{
+      setError("Sélectionnez au moins un type de service"); return false;
+    }
+    return true;
+  }
+
+  // ─── Submit ─────────────────────────────────────────────────────────────────
+
+  async function handleRegister() {
+    if (!validate()) return;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const payload: Record<string, unknown> = {
+        name,
+        email,
+        password,
+        password_confirmation: confirmPassword,
+         role: role ,
+      };
+
+      // ✅ FIX: envoyer services[] tableau — correspond exactement au AuthController
+      if (role === "owner") {
+        payload.services = selectedServices;
+      }
+
+      const { data } = await api.post("/register", payload);
+      const { token, user } = data;
+
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      // ✅ FIX: redirection correcte selon profile_completed
+      redirectByRole(user.role.name, user.profile_completed);
+
+    } catch (err: any) {
+      const errors = err.response?.data?.errors as Record<string, string[]> | undefined;
+      if (errors) {
+        setError(Object.values(errors)[0]?.[0] ?? "Erreur de validation");
+      } else if (err.response?.status === 409) {
+        setError("Cet email est déjà utilisé");
+      } else {
+        setError(err.response?.data?.message ?? "Erreur lors de l'inscription. Veuillez réessayer.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // ─── Animation variants ──────────────────────────────────────────────────────
+
+  const fadeUp = {
+    initial: { opacity: 0, y: 16 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.4 },
+  };
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 flex items-center justify-center p-4 relative overflow-hidden">
+
+      {/* Background blobs */}
+      <motion.div
+        animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0] }}
+        transition={{ duration: 20, repeat: Infinity }}
+        className="absolute top-20 left-20 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none"
+      />
+      <motion.div
+        animate={{ scale: [1, 1.5, 1], rotate: [0, -90, 0] }}
+        transition={{ duration: 25, repeat: Infinity }}
+        className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"
+      />
+
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md p-8 relative z-10 max-h-[92vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="text-center mb-6">
+          <motion.div
+            whileHover={{ scale: 1.1, rotate: 360 }}
+            transition={{ duration: 0.5 }}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/30"
+          >
+            <Car className="w-10 h-10 text-white" />
+          </motion.div>
+          <h2 className="text-3xl font-bold text-gray-800 mb-1">Créer un compte</h2>
+          <p className="text-gray-500 text-sm">Rejoignez notre communauté de services</p>
+        </div>
+
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex items-center gap-2"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="space-y-4">
+
+          {/* Name */}
+          <motion.div {...fadeUp} className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Nom complet"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
+          </motion.div>
+
+          {/* Email */}
+          <motion.div {...fadeUp} className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="email"
+              placeholder="Adresse email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
+          </motion.div>
+
+          {/* Password */}
+          <motion.div {...fadeUp} className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Mot de passe"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
+              className="w-full pl-10 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </motion.div>
+
+          {/* Confirm Password */}
+          <motion.div {...fadeUp} className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Confirmer le mot de passe"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={isLoading}
+              className="w-full pl-10 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </motion.div>
+
+          {/* Password strength */}
+          <AnimatePresence>
+            {password && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-2 overflow-hidden"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Force du mot de passe</span>
+                  <span className="text-xs font-medium text-gray-700">{getStrengthLabel(passwordStrength)}</span>
+                </div>
+                <div className="flex gap-1 h-1.5">
+                  {[1, 2, 3, 4].map((l) => (
+                    <div
+                      key={l}
+                      className={`flex-1 rounded-full transition-all duration-300 ${l <= passwordStrength ? getStrengthColor(passwordStrength) : "bg-gray-200"}`}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
+                  {[
+                    [password.length >= 8, "8+ caractères"],
+                    [/[A-Z]/.test(password), "Majuscule"],
+                    [/[0-9]/.test(password), "Chiffre"],
+                    [/[^A-Za-z0-9]/.test(password), "Caractère spécial"],
+                  ].map(([ok, label]) => (
+                    <div key={label as string} className="flex items-center gap-1">
+                      <CheckCircle className={`w-3 h-3 ${ok ? "text-green-500" : "text-gray-300"}`} />
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Role selection */}
+          <motion.div {...fadeUp} className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Vous êtes ?</label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                // Dans le mapping des boutons
+{ id: "client" as const, emoji: "👤", label: "Client", desc: "Louez des véhicules et services" },
+{ id: "owner" as const, emoji: "🚗", label: "Propriétaire", desc: "Proposez vos services" },
+               
+              ].map((r) => (
+                <motion.button
+                  key={r.id}
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setRole(r.id)}
+                  disabled={isLoading}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    role === r.id ? "border-blue-600 bg-blue-50" : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{r.emoji}</div>
+                  <div className={`text-sm font-medium ${role === r.id ? "text-blue-600" : "text-gray-600"}`}>
+                    {r.label}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">{r.desc}</div>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* ✅ Service multi-selection (owner only) */}
+          <AnimatePresence>
+            {role === "owner" && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-3 overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">
+                    Quels services proposez-vous ?
+                  </label>
+                  <span className="text-xs text-blue-600 font-medium">
+                    {selectedServices.length} sélectionné{selectedServices.length > 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {SERVICE_OPTIONS.map((svc) => {
+                    const Icon = svc.icon;
+                    const selected = selectedServices.includes(svc.id);
+                    return (
+                      <motion.button
+                        key={svc.id}
+                        type="button"
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => toggleService(svc.id)}
+                        disabled={isLoading}
+                        className={`w-full p-3 rounded-xl border-2 text-left flex items-center transition-all ${
+                          selected
+                            ? "border-blue-600 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300 bg-white"
+                        }`}
+                      >
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 shrink-0 transition-colors ${
+                          selected ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-medium ${selected ? "text-blue-700" : "text-gray-700"}`}>
+                            {svc.label}
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">{svc.description}</div>
+                        </div>
+                        {/* Checkbox visuel */}
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                          selected ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                        }`}>
+                          {selected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-xs text-blue-600 bg-blue-50 rounded-xl p-3 flex items-start gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  Vous pouvez sélectionner plusieurs services. Vous pourrez les modifier depuis votre tableau de bord.
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Terms */}
+          <motion.div {...fadeUp} className="flex items-start gap-2">
+            <input
+              id="terms"
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(e) => setAcceptTerms(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-blue-600 cursor-pointer"
+            />
+            <label htmlFor="terms" className="text-sm text-gray-600 cursor-pointer">
+              J&apos;accepte les{" "}
+              <Link href="/terms" className="text-blue-600 hover:underline">conditions d&apos;utilisation</Link>{" "}
+              et la{" "}
+              <Link href="/privacy" className="text-blue-600 hover:underline">politique de confidentialité</Link>
+            </label>
+          </motion.div>
+
+          {/* Submit */}
+          <motion.button
+            {...fadeUp}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleRegister}
+            disabled={isLoading}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Inscription en cours…
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-5 h-5" />
+                S&apos;inscrire
+              </>
+            )}
+          </motion.button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-3 bg-white/90 text-sm text-gray-500">Déjà inscrit ?</span>
+            </div>
+          </div>
+
+          {/* Login */}
+          <motion.button
+            {...fadeUp}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => router.push("/login")}
+            disabled={isLoading}
+            className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <LogIn className="w-5 h-5" />
+            Se connecter
+          </motion.button>
+
+        </div>
+      </motion.div>
+    </div>
+  );
 }

@@ -1,1408 +1,1294 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    User,
-    Mail,
-    Phone,
-    MapPin,
-    Calendar,
-    Car,
-    CreditCard,
-    Shield,
-    Award,
-    Star,
-    Edit2,
-    Save,
-    X,
-    Camera,
-    LogOut,
-    Settings,
-    Bell,
-    Menu,
-    ChevronRight,
-    CheckCircle,
-    AlertCircle,
-    Lock,
-    Eye,
-    EyeOff,
-    Upload,
-    Home,
-    Clock,
-    TrendingUp,
-    Heart,
-    Download,
-    FileText,
+  User,
+  Mail,
+  BadgeCheck,
+  Phone,
+  MapPin,
+  Calendar,
+  Car,
+  Edit2,
+  Save,
+  X,
+  Camera,
+  CheckCircle,
+  AlertCircle,
+  Lock,
+  Eye,
+  EyeOff,
+  Upload,
+  FileText,
+  CreditCard,
+  Shield,
+  Star,
+  Clock,
+  TrendingUp,
+  ChevronRight,
+  IdCard,
+  Fingerprint,
 } from "lucide-react";
 import api from "@/lib/api";
+import Navbar from "@/components/Navbar";
+import { useProfile } from "@/hooks/useProfile";
 
-// Interface pour l'utilisateur
-interface User {
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Booking {
+  id: number;
+  vehicule: {
     id: number;
-    name: string;
-    email: string;
-    phone?: string;
-    address?: string;
-    city?: string;
-    country?: string;
-    postal_code?: string;
-    profile_image?: string | null;
-    role: {
-        id: number;
-        name: string;
-    };
-    created_at: string;
-    verified?: boolean;
-    member_since?: string;
+    brand: string;
+    model: string;
+    image_url: string | null;
+  };
+  start_date: string;
+  end_date: string;
+  status: string;
+  total_price: number;
 }
 
-// Interface pour les statistiques
-interface UserStats {
-    totalBookings: number;
-    activeBookings: number;
-    completedBookings: number;
-    totalSpent: number;
-    memberSince: string;
-    favoriteVehicles?: number;
-    reviews?: number;
-    rating?: number;
+interface Review {
+  id: number;
+  rating: number;
+  comment: string;
+  created_at: string;
+  vehicule?: {
+    brand: string;
+    model: string;
+  };
 }
 
-// Interface pour les réservations récentes
-interface RecentBooking {
-    id: number;
-    vehicule: {
-        id: number;
-        brand: string;
-        model: string;
-        image_url: string | null;
-    };
-    start_date: string;
-    end_date: string;
-    status: string;
-    total_price: number;
+interface Document {
+  id: number;
+  type: string;
+  status: string;
+  extracted_data?: any;
 }
-function DocumentCard({ title, docType, icon, color, document, loading, onUpload, fields }: {
-    title: string;
-    docType: "cin" | "permis" | "carte_grise";
-    icon: React.ReactNode;
-    color: string;
-    document: { uploaded: boolean; data: any };
-    loading: boolean;
-    onUpload: (e: React.ChangeEvent<HTMLInputElement>, type: "cin" | "permis" | "carte_grise") => void;
-    fields: { label: string; value?: string }[];
+
+type Tab = "profile" | "security" | "documents" | "activity";
+
+// ─── Document card ────────────────────────────────────────────────────────────
+function DocCard({
+  title,
+  icon,
+  color,
+  uploaded,
+  loading,
+  fields,
+  onUpload,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  uploaded: boolean;
+  loading: boolean;
+  fields: { label: string; value?: string }[];
+  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
-    return (
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            {/* Header */}
-            <div className={`bg-gradient-to-r ${color} p-4 flex items-center justify-between`}>
-                <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                        {icon}
-                    </div>
-                    <h3 className="text-white font-semibold">{title}</h3>
-                </div>
-                {document.uploaded && (
-                    <div className="flex items-center bg-white/20 text-white text-xs px-2 py-1 rounded-full">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Vérifié
-                    </div>
-                )}
-            </div>
-
-            <div className="p-6">
-                {/* Zone upload */}
-                <label className={`block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition
-                    ${document.uploaded
-                        ? 'border-green-300 bg-green-50'
-                        : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                    }`}
-                >
-                    <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => onUpload(e, docType)}
-                        disabled={loading}
-                    />
-                    {loading ? (
-                        <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                            <p className="text-sm text-blue-600 font-medium">Analyse en cours...</p>
-                            <p className="text-xs text-gray-500 mt-1">Notre IA extrait les données</p>
-                        </div>
-                    ) : document.uploaded ? (
-                        <div className="flex flex-col items-center">
-                            <CheckCircle className="w-8 h-8 text-green-500 mb-2" />
-                            <p className="text-sm text-green-600 font-medium">Document analysé !</p>
-                            <p className="text-xs text-gray-500 mt-1">Cliquer pour remplacer</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center">
-                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                            <p className="text-sm font-medium text-gray-700">Cliquer pour uploader</p>
-                            <p className="text-xs text-gray-500 mt-1">JPG, PNG — max 5MB</p>
-                        </div>
-                    )}
-                </label>
-
-                {/* Données extraites */}
-                {document.uploaded && document.data && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="mt-4 grid grid-cols-2 gap-3"
-                    >
-                        {fields.map((field) => field.value && (
-                            <div key={field.label} className="bg-gray-50 rounded-lg p-3">
-                                <p className="text-xs text-gray-500">{field.label}</p>
-                                <p className="font-medium text-gray-800 text-sm mt-0.5">{field.value}</p>
-                            </div>
-                        ))}
-                    </motion.div>
-                )}
-            </div>
+  return (
+    <div className="bg-white rounded-2xl shadow-md overflow-hidden">
+      <div
+        className={`bg-gradient-to-r ${color} p-4 flex items-center justify-between`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+            {icon}
+          </div>
+          <span className="text-white font-semibold text-sm">{title}</span>
         </div>
-    );
+        {uploaded && (
+          <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" /> Vérifié
+          </span>
+        )}
+      </div>
+      <div className="p-4">
+        <label
+          className={`block border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${
+            uploaded
+              ? "border-green-300 bg-green-50"
+              : "border-gray-200 hover:border-blue-400 hover:bg-blue-50"
+          }`}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onUpload}
+            disabled={loading}
+          />
+          {loading ? (
+            <div className="flex flex-col items-center gap-1">
+              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs text-blue-600">Analyse IA en cours…</p>
+            </div>
+          ) : uploaded ? (
+            <div className="flex flex-col items-center gap-1">
+              <CheckCircle className="w-6 h-6 text-green-500" />
+              <p className="text-xs text-green-600">
+                Analysé — cliquer pour remplacer
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1">
+              <Upload className="w-6 h-6 text-gray-400" />
+              <p className="text-xs text-gray-500">Cliquer pour uploader</p>
+            </div>
+          )}
+        </label>
+        {uploaded && fields.some((f) => f.value) && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="mt-3 grid grid-cols-2 gap-2"
+          >
+            {fields
+              .filter((f) => f.value)
+              .map((f) => (
+                <div key={f.label} className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-400">{f.label}</p>
+                  <p className="text-sm font-medium text-gray-800">{f.value}</p>
+                </div>
+              ))}
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-export default function ProfilePage() {
-    const router = useRouter();
+// ─── Composant réservation ────────────────────────────────────────────────────
+function BookingCard({ booking }: { booking: Booking }) {
+  const router = useRouter();
 
-    // États
-    const [user, setUser] = useState<User | null>(null);
-    const [stats, setStats] = useState<UserStats | null>(null);
-    const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [isEditing, setIsEditing] = useState<boolean>(false);
-    const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-    const [activeTab, setActiveTab] = useState<string>("profile");
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return { label: "En attente", color: "bg-yellow-100 text-yellow-700" };
+      case "approved":
+        return { label: "Confirmée", color: "bg-green-100 text-green-700" };
+      case "completed":
+        return { label: "Terminée", color: "bg-blue-100 text-blue-700" };
+      case "cancelled":
+        return { label: "Annulée", color: "bg-red-100 text-red-700" };
+      default:
+        return { label: status, color: "bg-gray-100 text-gray-700" };
+    }
+  };
 
-    // Formulaire d'édition
-    const [editForm, setEditForm] = useState({
-        name: "",
-        email: "",
-        phone: "",
-        address: "",
-        city: "",
-        country: "",
-        postal_code: ""
-    });
+  const status = getStatusBadge(booking.status);
 
-    // Changement de mot de passe
-    const [passwordData, setPasswordData] = useState({
-        current_password: "",
-        new_password: "",
-        confirm_password: ""
-    });
-    const [showPassword, setShowPassword] = useState({
-        current: false,
-        new: false,
-        confirm: false
-    });
-    const [changingPassword, setChangingPassword] = useState<boolean>(false);
+  return (
+    <div
+      className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition cursor-pointer"
+      onClick={() => router.push(`/bookings/${booking.id}`)}
+    >
+      <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center overflow-hidden">
+        {booking.vehicule.image_url ? (
+          <img
+            src={booking.vehicule.image_url}
+            alt={`${booking.vehicule.brand} ${booking.vehicule.model}`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <Car className="w-6 h-6 text-white" />
+        )}
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-gray-800">
+            {booking.vehicule.brand} {booking.vehicule.model}
+          </p>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${status.color}`}>
+            {status.label}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          Du {new Date(booking.start_date).toLocaleDateString("fr-FR")} au{" "}
+          {new Date(booking.end_date).toLocaleDateString("fr-FR")}
+        </p>
+        <p className="text-sm font-semibold text-green-600 mt-1">
+          {booking.total_price} MAD
+        </p>
+      </div>
+      <ChevronRight className="w-4 h-4 text-gray-400" />
+    </div>
+  );
+}
 
-    // Upload de photo
-    const [uploadingImage, setUploadingImage] = useState<boolean>(false);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
+// ─── Composant avis ───────────────────────────────────────────────────────────
+function ReviewCard({ review }: { review: Review }) {
+  return (
+    <div className="p-4 bg-gray-50 rounded-xl">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="flex">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                className={`w-3 h-3 ${s <= review.rating ? "text-yellow-400 fill-current" : "text-gray-300"}`}
+              />
+            ))}
+          </div>
+          {review.vehicule && (
+            <span className="text-xs text-gray-500">
+              {review.vehicule.brand} {review.vehicule.model}
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-gray-400">
+          {new Date(review.created_at).toLocaleDateString("fr-FR")}
+        </span>
+      </div>
+      {review.comment && (
+        <p className="text-sm text-gray-600">{review.comment}</p>
+      )}
+    </div>
+  );
+}
 
-    // Messages
-    const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function ClientProfilePage() {
+  const router = useRouter();
+  const {
+    user,
+    loading,
+    saving,
+    msg,
+    form,
+    setUser,
+    setForm,
+    saveProfile,
+    saveAvatar,
+    changePassword,
+    showMsg,
+  } = useProfile();
 
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        const userStr = localStorage.getItem("user");
+  const [tab, setTab] = useState<Tab>("profile");
+  const [editing, setEditing] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [loadingReviews, setLoadingReviews] = useState(true);
 
-        if (!token) {
-            router.push("/login");
-            return;
-        }
+  // password
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [showPw, setShowPw] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+  const [changingPw, setChangingPw] = useState(false);
 
-        if (userStr) {
-            try {
-                const userData = JSON.parse(userStr);
-                setUser(userData);
-                setEditForm({
-                    name: userData.name || "",
-                    email: userData.email || "",
-                    phone: userData.phone || "",
-                    address: userData.address || "",
-                    city: userData.city || "",
-                    country: userData.country || "",
-                    postal_code: userData.postal_code || ""
-                });
-
-                // Charger les statistiques et réservations récentes
-                fetchUserData();
-
-            } catch (error) {
-                console.error("Error parsing user:", error);
-            }
-        }
-    }, []);
-
-    const fetchUserData = async () => {
-        try {
-            setLoading(true);
-            // Simuler un délai
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            // Statistiques simulées
-            const mockStats: UserStats = {
-                totalBookings: 24,
-                activeBookings: 2,
-                completedBookings: 18,
-                totalSpent: 3450,
-                memberSince: "2022",
-                favoriteVehicles: 6,
-                reviews: 8,
-                rating: 4.8
-            };
-            setStats(mockStats);
-
-            // Réservations récentes simulées
-            const mockBookings: RecentBooking[] = [
-                {
-                    id: 1,
-                    vehicule: {
-                        id: 1,
-                        brand: "Tesla",
-                        model: "Model 3",
-                        image_url: null
-                    },
-                    start_date: "2024-03-15",
-                    end_date: "2024-03-20",
-                    status: "completed",
-                    total_price: 445
-                },
-                {
-                    id: 2,
-                    vehicule: {
-                        id: 2,
-                        brand: "Renault",
-                        model: "Clio",
-                        image_url: null
-                    },
-                    start_date: "2024-03-25",
-                    end_date: "2024-03-28",
-                    status: "approved",
-                    total_price: 135
-                },
-                {
-                    id: 3,
-                    vehicule: {
-                        id: 3,
-                        brand: "Peugeot",
-                        model: "308",
-                        image_url: null
-                    },
-                    start_date: "2024-04-01",
-                    end_date: "2024-04-05",
-                    status: "pending",
-                    total_price: 220
-                }
-            ];
-            setRecentBookings(mockBookings);
-
-            setLoading(false);
-        } catch (error) {
-            console.error("Error fetching user data:", error);
-            setLoading(false);
-        }
+  // documents
+  const [ocrLoading, setOcrLoading] = useState<Record<string, boolean>>({});
+  const [docs, setDocs] = useState<
+    Record<string, { uploaded: boolean; data: any }>
+  >({
+    cin: { uploaded: false, data: null },
+    cin_verso: { uploaded: false, data: null },
+    permis: { uploaded: false, data: null },
+    permis_verso: { uploaded: false, data: null },
+  });
+  const [crossValidation, setCrossValidation] = useState<{
+    success: boolean;
+    message: string;
+    fields: {
+      last_name: { cin: string | null; permis: string | null; match: boolean };
+      first_name: { cin: string | null; permis: string | null; match: boolean };
+      birth_date: { cin: string | null; permis: string | null; match: boolean };
     };
+  } | null>(null);
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImagePreview(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-
-            // Simuler l'upload
-            setUploadingImage(true);
-            setTimeout(() => {
-                setUploadingImage(false);
-                setSaveMessage({ type: 'success', text: 'Photo de profil mise à jour' });
-            }, 1500);
-        }
-    };
-
-    const handleSaveProfile = async () => {
-        try {
-            setLoading(true);
-            // Simuler un appel API
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Mettre à jour l'utilisateur localement
-            const updatedUser = {
-                ...user!,
-                ...editForm
-            };
-            setUser(updatedUser);
-            localStorage.setItem("user", JSON.stringify(updatedUser));
-
-            setSaveMessage({ type: 'success', text: 'Profil mis à jour avec succès' });
-            setIsEditing(false);
-
-            // Effacer le message après 3 secondes
-            setTimeout(() => setSaveMessage(null), 3000);
-
-        } catch (error) {
-            console.error("Error saving profile:", error);
-            setSaveMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleChangePassword = async () => {
-        // Validation
-        if (passwordData.new_password !== passwordData.confirm_password) {
-            setSaveMessage({ type: 'error', text: 'Les mots de passe ne correspondent pas' });
-            return;
-        }
-
-        if (passwordData.new_password.length < 6) {
-            setSaveMessage({ type: 'error', text: 'Le mot de passe doit contenir au moins 6 caractères' });
-            return;
-        }
-
-        try {
-            setLoading(true);
-            // Simuler un appel API
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            setSaveMessage({ type: 'success', text: 'Mot de passe modifié avec succès' });
-            setChangingPassword(false);
-            setPasswordData({
-                current_password: "",
-                new_password: "",
-                confirm_password: ""
-            });
-
-            setTimeout(() => setSaveMessage(null), 3000);
-
-        } catch (error) {
-            console.error("Error changing password:", error);
-            setSaveMessage({ type: 'error', text: 'Erreur lors du changement de mot de passe' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        router.push("/");
-    };
-    const handleLogin = (): void => {
-        router.push("/login");
-    };
-
-    const handleOwners = (): void => {
-        router.push("/owners");
-    };
-    const handleRegister = (): void => {
-        router.push("/register");
-    };
-    const navItems = [
-        { label: "Accueil", href: "/" },
-        { label: "Véhicules", href: "/vehicules" },
-        { label: "Comment ça marche", href: "#" },
-        { label: "Propriétaire", href: "/owners" },
-        { label: "Contact", href: "#" },
-    ];
-    const handleViewBooking = (id: number) => {
-        router.push(`/Client/bookings/${id}`);
-    };
-
-    // OCR states
-    const [ocrLoading, setOcrLoading] = useState<{ [key: string]: boolean }>({});
-    const [documents, setDocuments] = useState<{
-        cin: { uploaded: boolean; data: any; file_path?: string };
-        permis: { uploaded: boolean; data: any; file_path?: string };
-        carte_grise: { uploaded: boolean; data: any; file_path?: string };
-    }>({
-        cin: { uploaded: false, data: null },
-        permis: { uploaded: false, data: null },
-        carte_grise: { uploaded: false, data: null },
-    });
-    const handleDocumentUpload = async (
-        e: React.ChangeEvent<HTMLInputElement>,
-        docType: "cin" | "permis" | "carte_grise"
-    ) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setOcrLoading(prev => ({ ...prev, [docType]: true }));
-
-        try {
-            // 1. Envoyer au microservice OCR Python
-            const formData = new FormData();
-            formData.append("file", file);
-            formData.append("doc_type", docType);
-            // a verifier aprés  const res = await api.post("/documents/upload", formData);
-            const ocrResponse = await fetch("http://localhost:8001/ocr/extract", {
-                method: "POST",
-                body: formData,
-            });
-            const ocrResult = await ocrResponse.json();
-
-            // 2. Sauvegarder dans Laravel via ton API
-            const laravelFormData = new FormData();
-            laravelFormData.append("document", file);
-            laravelFormData.append("doc_type", docType);
-
-            const saveResponse = await api.post("/documents/upload", laravelFormData, {
-                headers: { "Content-Type": "multipart/form-data" }
-            });
-
-            // 3. Mettre à jour l'état local
-            setDocuments(prev => ({
-                ...prev,
-                [docType]: {
-                    uploaded: true,
-                    data: ocrResult.data,
-                    file_path: saveResponse.data.path
-                }
-            }));
-
-            // 4. Pré-remplir le profil si CIN
-            if (docType === "cin" && ocrResult.data) {
-                const d = ocrResult.data;
-                setEditForm(prev => ({
-                    ...prev,
-                    name: d.last_name && d.first_name
-                        ? `${d.first_name} ${d.last_name}`
-                        : prev.name,
-                }));
-                setSaveMessage({
-                    type: 'success',
-                    text: '✅ Document analysé ! Profil pré-rempli automatiquement.'
-                });
-                setIsEditing(true); // Ouvrir le formulaire pour que l'user valide
-            } else {
-                setSaveMessage({ type: 'success', text: '✅ Document uploadé avec succès !' });
-            }
-
-        } catch (error) {
-            setSaveMessage({ type: 'error', text: 'Erreur lors de l\'analyse du document' });
-        } finally {
-            setOcrLoading(prev => ({ ...prev, [docType]: false }));
-        }
-    };
-
-    const handleDashboard = () => {
-        if (user?.role?.name === "owner") {
-            router.push("/owner/dashboard");
-        } else {
-            router.push("/dashboard");
-        }
-    };
-
-
-    // Obtenir l'initiale du nom
-    const getInitial = () => {
-        return user?.name?.charAt(0).toUpperCase() || "U";
-    };
-
-    // Formater la date
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('fr-FR', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
-
-    // Obtenir le badge de statut
-    const getStatusBadge = (status: string) => {
-        const statusConfig = {
-            pending: { bg: "bg-yellow-100", text: "text-yellow-600", label: "En attente" },
-            approved: { bg: "bg-green-100", text: "text-green-600", label: "Confirmée" },
-            completed: { bg: "bg-blue-100", text: "text-blue-600", label: "Terminée" },
-            cancelled: { bg: "bg-gray-100", text: "text-gray-600", label: "Annulée" }
+  // ── Charger les documents existants depuis l'API ──────────────────────────
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      if (!user) return;
+      try {
+        const { data } = await api.get("/documents");
+        const docsMap: Record<string, { uploaded: boolean; data: any }> = {
+          cin: { uploaded: false, data: null },
+          cin_verso: { uploaded: false, data: null },
+          permis: { uploaded: false, data: null },
+          permis_verso: { uploaded: false, data: null },
         };
 
-        const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
+        data.forEach((doc: Document) => {
+          if (doc.type === "cin") {
+            docsMap.cin = { uploaded: true, data: doc.extracted_data };
+          } else if (doc.type === "cin_verso") {
+            docsMap.cin_verso = { uploaded: true, data: doc.extracted_data };
+          } else if (doc.type === "permis") {
+            docsMap.permis = { uploaded: true, data: doc.extracted_data };
+          } else if (doc.type === "permis_verso") {
+            docsMap.permis_verso = { uploaded: true, data: doc.extracted_data };
+          }
+        });
 
-        return (
-            <span className={`text-xs px-2 py-1 rounded-full ${config.bg} ${config.text}`}>
-                {config.label}
-            </span>
-        );
+        setDocs(docsMap);
+
+        // Charger la validation croisée existante si CIN + Permis présents
+        if (docsMap.cin.uploaded && docsMap.permis.uploaded) {
+          try {
+            const { data: crossData } = await api.post(
+              "/documents/validate-cross",
+            );
+            if (crossData && crossData.success !== undefined) {
+              setCrossValidation(crossData);
+            }
+          } catch {
+            // Pas de validation existante — normal
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching documents:", error);
+      }
     };
 
-    if (loading && !user) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="relative">
-                        <div className="w-20 h-20 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                        <User className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-blue-600 animate-pulse" />
-                    </div>
-                    <p className="mt-4 text-gray-600">Chargement de votre profil...</p>
-                </div>
-            </div>
-        );
+    fetchDocuments();
+  }, [user]);
+
+  // ── Charger les réservations ────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const { data } = await api.get("/bookings/my");
+        setBookings(data.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching bookings:", error);
+      } finally {
+        setLoadingBookings(false);
+      }
+    };
+
+    const fetchReviews = async () => {
+      try {
+        const { data } = await api.get("/reviews/my");
+        setReviews(data.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching reviews:", error);
+      } finally {
+        setLoadingReviews(false);
+      }
+    };
+
+    if (user) {
+      fetchBookings();
+      fetchReviews();
     }
+  }, [user]);
 
+  // Fonction pour nettoyer l'URL de l'image
+  const getImageUrl = (url: string | null | undefined): string | undefined => {
+    if (!url) return undefined;
+    if (url.includes("http://auth-service")) {
+      return url.replace("http://auth-service", "http://localhost");
+    }
+    if (url.includes("http://vehicle-service")) {
+      return url.replace("http://vehicle-service", "http://localhost");
+    }
+    return url;
+  };
+
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+    setUploadingAvatar(true);
+    const url = await saveAvatar(file);
+    if (url) setAvatarPreview(url);
+    setUploadingAvatar(false);
+  }
+
+  // ── Save profile ──────────────────────────────────────────────────────────
+  async function handleSave() {
+    const ok = await saveProfile();
+    if (ok) setEditing(false);
+  }
+
+  // ── Change password ───────────────────────────────────────────────────────
+  async function handleChangePw() {
+    const ok = await changePassword(pwCurrent, pwNew, pwConfirm);
+    if (ok) {
+      setChangingPw(false);
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+    }
+  }
+
+  // ── Document upload → OCR ─────────────────────────────────────────────────
+  async function handleDocUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: string,
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setOcrLoading((p) => ({ ...p, [type]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("document", file);
+      fd.append("doc_type", type);
+      const { data } = await api.post("/documents/upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setDocs((p) => ({
+        ...p,
+        [type]: { uploaded: true, data: data.extracted_data },
+      }));
+
+      // ── Validation croisée ────────────────────────────────
+      if (data.cross_validated) {
+        setCrossValidation(data.cross_validated);
+        if (data.cross_validated.success) {
+          showMsg(
+            "success",
+            "✅ Documents validés — CIN et Permis correspondent !",
+          );
+        } else {
+          showMsg(
+            "error",
+            "⚠️ Incohérence détectée entre CIN et Permis — vérifiez les champs.",
+          );
+        }
+      }
+
+      if (type === "cin" && data.extracted_data) {
+        const d = data.extracted_data;
+        setForm((f) => ({
+          ...f,
+          first_name: d.first_name ?? f.first_name,
+          last_name: d.last_name ?? f.last_name,
+          date_of_birth: d.birth_date ?? f.date_of_birth,
+        }));
+        showMsg("success", "CIN analysée — profil pré-rempli !");
+        setEditing(true);
+        setTab("profile");
+      } else {
+        showMsg("success", "Document analysé avec succès.");
+      }
+    } catch {
+      showMsg("error", "Erreur lors de l'analyse du document.");
+    } finally {
+      setOcrLoading((p) => ({ ...p, [type]: false }));
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const getInitial = () =>
+    (form.first_name || user?.name || "U")[0].toUpperCase();
+
+  const avatarSrc = avatarPreview ?? user?.avatar ?? null;
+
+  // Stats
+  const stats = {
+    bookings_count: bookings.length,
+    reviews_count: reviews.length,
+    completed_bookings: bookings.filter((b) => b.status === "completed").length,
+    total_spent: bookings
+      .filter((b) => b.status === "completed" || b.status === "approved")
+      .reduce((sum, b) => sum + b.total_price, 0),
+  };
+
+  if (loading && !user) {
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Navigation */}
-            <motion.nav
-                initial={{ y: -100 }}
-                animate={{ y: 0 }}
-                className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md z-50 border-b border-gray-100"
-            >
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-20">
-                        {/* Logo */}
-                        <div className="flex items-center space-x-4">
-                            <Link href="/" className="flex items-center space-x-2">
-                                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                                    <Car className="w-6 h-6 text-white" />
-                                </div>
-                                <span className="font-bold text-xl text-gray-800">AutoRent</span>
-                            </Link>
-                        </div>
-
-
-
-                        {/* Desktop Navigation */}
-                        <div className="hidden md:flex items-center space-x-8">
-
-                            {navItems.map((item) => (
-                                <motion.div
-                                    key={item.label}
-                                    whileHover={{ y: -2 }}
-                                    transition={{ type: "spring", stiffness: 300 }}
-                                >
-                                    <Link
-                                        href={item.href}
-                                        className="text-gray-600 hover:text-blue-600 transition duration-200 font-medium relative group"
-                                    >
-                                        {item.label}
-                                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 transition-all group-hover:w-full"></span>
-                                    </Link>
-                                </motion.div>
-                            ))}
-
-                            {user ? (
-                                <div className="flex items-center space-x-4">
-                                    <span className="text-gray-700 font-medium">
-                                        Bonjour, {user.name}
-                                    </span>
-
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        onClick={() => router.push("/Client/profile")}
-                                        className="text-blue-600 font-medium"
-                                    >
-                                        Profil
-                                    </motion.button>
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        onClick={() => router.push("/Client/bookings")}
-                                        className="text-blue-600 font-medium"
-                                    >
-                                        Réservations
-                                    </motion.button>
-
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        onClick={() => {
-                                            localStorage.removeItem("token");
-                                            localStorage.removeItem("user");
-                                            setUser(null);
-                                            router.push("/");
-                                        }}
-                                        className="text-red-500 font-medium"
-                                    >
-                                        Logout
-                                    </motion.button>
-                                </div>
-                            ) : (
-                                <>
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        onClick={handleLogin}
-                                        className="text-gray-600 hover:text-blue-600 font-medium"
-                                    >
-                                        Connexion
-                                    </motion.button>
-
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        onClick={handleRegister}
-                                        className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2.5 rounded-xl font-medium"
-                                    >
-                                        Inscription
-                                    </motion.button>
-                                </>
-                            )}
-                        </div>
-
-
-                        {/* Mobile menu button */}
-                        <motion.button
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className="md:hidden text-gray-600 hover:text-gray-900"
-                        >
-                            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-                        </motion.button>
-                    </div>
-                </div>
-            </motion.nav>
-
-            {/* Contenu principal */}
-            <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-                {/* Message de succès/erreur */}
-                <AnimatePresence>
-                    {saveMessage && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className={`mb-6 p-4 rounded-xl flex items-center ${saveMessage.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                                }`}
-                        >
-                            {saveMessage.type === 'success' ? (
-                                <CheckCircle className="w-5 h-5 mr-2" />
-                            ) : (
-                                <AlertCircle className="w-5 h-5 mr-2" />
-                            )}
-                            {saveMessage.text}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {/* Tabs de navigation */}
-                <div className="flex space-x-4 mb-8 border-b">
-                    <button
-                        onClick={() => setActiveTab("profile")}
-                        className={`px-4 py-2 font-medium transition relative ${activeTab === "profile"
-                            ? "text-blue-600"
-                            : "text-gray-500 hover:text-gray-700"
-                            }`}
-                    >
-                        Profil
-                        {activeTab === "profile" && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600"
-                            />
-                        )}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("security")}
-                        className={`px-4 py-2 font-medium transition relative ${activeTab === "security"
-                            ? "text-blue-600"
-                            : "text-gray-500 hover:text-gray-700"
-                            }`}
-                    >
-                        Sécurité
-                        {activeTab === "security" && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600"
-                            />
-                        )}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("documents")}
-                        className={`px-4 py-2 font-medium transition relative ${activeTab === "documents"
-                            ? "text-blue-600"
-                            : "text-gray-500 hover:text-gray-700"
-                            }`}
-                    >
-                        Documents
-                        {activeTab === "documents" && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600"
-                            />
-                        )}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("activity")}
-                        className={`px-4 py-2 font-medium transition relative ${activeTab === "activity"
-                            ? "text-blue-600"
-                            : "text-gray-500 hover:text-gray-700"
-                            }`}
-                    >
-                        Activité
-                        {activeTab === "activity" && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600"
-                            />
-                        )}
-                    </button>
-                </div>
-
-                {/* Tab Profil */}
-                {activeTab === "profile" && (
-                    <div className="grid lg:grid-cols-3 gap-8">
-                        {/* Colonne gauche - Photo et infos */}
-                        <motion.div
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="lg:col-span-1"
-                        >
-                            <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24">
-                                {/* Photo de profil */}
-                                <div className="text-center mb-6">
-                                    <div className="relative inline-block">
-                                        <div className="w-32 h-32 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center mx-auto overflow-hidden">
-                                            {imagePreview || user?.profile_image ? (
-                                                <img
-                                                    src={imagePreview || user?.profile_image || ''}
-                                                    alt={user?.name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            ) : (
-                                                <span className="text-4xl font-bold text-white">{getInitial()}</span>
-                                            )}
-                                        </div>
-
-                                        {/* Bouton upload photo */}
-                                        <label className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition shadow-lg">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleImageChange}
-                                                className="hidden"
-                                            />
-                                            <Camera className="w-4 h-4 text-white" />
-                                        </label>
-
-                                        {uploadingImage && (
-                                            <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
-                                                <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <h2 className="text-xl font-bold text-gray-800 mt-4">{user?.name}</h2>
-                                    <p className="text-sm text-gray-500 capitalize">{user?.role?.name}</p>
-
-                                    {/* Badge vérifié */}
-                                    <div className="inline-flex items-center bg-green-50 text-green-600 px-3 py-1 rounded-full text-xs mt-2">
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        Compte vérifié
-                                    </div>
-                                </div>
-
-                                {/* Statistiques rapides */}
-                                <div className="grid grid-cols-3 gap-3 mb-6">
-                                    <div className="text-center p-3 bg-gray-50 rounded-xl">
-                                        <p className="text-2xl font-bold text-gray-800">{stats?.totalBookings || 0}</p>
-                                        <p className="text-xs text-gray-500">Réservations</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-gray-50 rounded-xl">
-                                        <p className="text-2xl font-bold text-gray-800">{stats?.activeBookings || 0}</p>
-                                        <p className="text-xs text-gray-500">Actives</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-gray-50 rounded-xl">
-                                        <p className="text-2xl font-bold text-gray-800">{stats?.rating || 0}</p>
-                                        <p className="text-xs text-gray-500">Note</p>
-                                    </div>
-                                </div>
-
-                                {/* Informations complémentaires */}
-                                <div className="space-y-3">
-                                    <div className="flex items-center text-sm">
-                                        <Calendar className="w-4 h-4 text-gray-400 mr-2" />
-                                        <span className="text-gray-600">Membre depuis {stats?.memberSince || "2024"}</span>
-                                    </div>
-                                    <div className="flex items-center text-sm">
-                                        <Award className="w-4 h-4 text-gray-400 mr-2" />
-                                        <span className="text-gray-600">{stats?.favoriteVehicles || 0} favoris</span>
-                                    </div>
-                                    <div className="flex items-center text-sm">
-                                        <Star className="w-4 h-4 text-gray-400 mr-2" />
-                                        <span className="text-gray-600">{stats?.reviews || 0} avis</span>
-                                    </div>
-                                </div>
-
-                                {/* Bouton d'édition */}
-                                {!isEditing && (
-                                    <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={() => setIsEditing(true)}
-                                        className="w-full mt-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center"
-                                    >
-                                        <Edit2 className="w-4 h-4 mr-2" />
-                                        Modifier le profil
-                                    </motion.button>
-                                )}
-                            </div>
-                        </motion.div>
-
-                        {/* Colonne droite - Formulaire */}
-                        <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="lg:col-span-2"
-                        >
-                            <div className="bg-white rounded-2xl shadow-lg p-6">
-                                <h3 className="text-xl font-bold text-gray-800 mb-6">
-                                    {isEditing ? "Modifier le profil" : "Informations personnelles"}
-                                </h3>
-
-                                <div className="space-y-4">
-                                    {/* Nom */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Nom complet
-                                        </label>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={editForm.name}
-                                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        ) : (
-                                            <p className="text-gray-800 py-2">{user?.name}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Email */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Email
-                                        </label>
-                                        {isEditing ? (
-                                            <input
-                                                type="email"
-                                                value={editForm.email}
-                                                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        ) : (
-                                            <p className="text-gray-800 py-2">{user?.email}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Téléphone */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Téléphone
-                                        </label>
-                                        {isEditing ? (
-                                            <input
-                                                type="tel"
-                                                value={editForm.phone}
-                                                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="+33 6 12 34 56 78"
-                                            />
-                                        ) : (
-                                            <p className="text-gray-800 py-2">{user?.phone || "Non renseigné"}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Adresse */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Adresse
-                                        </label>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={editForm.address}
-                                                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="123 Rue Example"
-                                            />
-                                        ) : (
-                                            <p className="text-gray-800 py-2">{user?.address || "Non renseigné"}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Ville et Code postal */}
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Ville
-                                            </label>
-                                            {isEditing ? (
-                                                <input
-                                                    type="text"
-                                                    value={editForm.city}
-                                                    onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                    placeholder="Paris"
-                                                />
-                                            ) : (
-                                                <p className="text-gray-800 py-2">{user?.city || "Non renseigné"}</p>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Code postal
-                                            </label>
-                                            {isEditing ? (
-                                                <input
-                                                    type="text"
-                                                    value={editForm.postal_code}
-                                                    onChange={(e) => setEditForm({ ...editForm, postal_code: e.target.value })}
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                    placeholder="75001"
-                                                />
-                                            ) : (
-                                                <p className="text-gray-800 py-2">{user?.postal_code || "Non renseigné"}</p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Pays */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Pays
-                                        </label>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={editForm.country}
-                                                onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="France"
-                                            />
-                                        ) : (
-                                            <p className="text-gray-800 py-2">{user?.country || "Non renseigné"}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Boutons d'action */}
-                                    {isEditing && (
-                                        <div className="flex space-x-4 pt-4">
-                                            <motion.button
-                                                whileHover={{ scale: 1.02 }}
-                                                whileTap={{ scale: 0.98 }}
-                                                onClick={handleSaveProfile}
-                                                disabled={loading}
-                                                className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center"
-                                            >
-                                                {loading ? (
-                                                    <>
-                                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                                                        Sauvegarde...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Save className="w-4 h-4 mr-2" />
-                                                        Enregistrer
-                                                    </>
-                                                )}
-                                            </motion.button>
-                                            <motion.button
-                                                whileHover={{ scale: 1.02 }}
-                                                whileTap={{ scale: 0.98 }}
-                                                onClick={() => setIsEditing(false)}
-                                                className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 transition flex items-center justify-center"
-                                            >
-                                                <X className="w-4 h-4 mr-2" />
-                                                Annuler
-                                            </motion.button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-
-                {/* Tab Sécurité */}
-                {activeTab === "security" && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="max-w-2xl mx-auto"
-                    >
-                        <div className="bg-white rounded-2xl shadow-lg p-6">
-                            <h3 className="text-xl font-bold text-gray-800 mb-6">Sécurité du compte</h3>
-
-                            {!changingPassword ? (
-                                <>
-                                    {/* Informations de sécurité */}
-                                    <div className="space-y-4 mb-6">
-                                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                                            <div className="flex items-center">
-                                                <Lock className="w-5 h-5 text-gray-400 mr-3" />
-                                                <div>
-                                                    <p className="font-medium text-gray-800">Mot de passe</p>
-                                                    <p className="text-sm text-gray-500">Dernière modification il y a 3 mois</p>
-                                                </div>
-                                            </div>
-                                            <motion.button
-                                                whileHover={{ scale: 1.05 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                onClick={() => setChangingPassword(true)}
-                                                className="text-blue-600 hover:text-blue-700 font-medium"
-                                            >
-                                                Changer
-                                            </motion.button>
-                                        </div>
-
-                                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                                            <div className="flex items-center">
-                                                <Shield className="w-5 h-5 text-gray-400 mr-3" />
-                                                <div>
-                                                    <p className="font-medium text-gray-800">Authentification à deux facteurs</p>
-                                                    <p className="text-sm text-gray-500">Non activée</p>
-                                                </div>
-                                            </div>
-                                            <motion.button
-                                                whileHover={{ scale: 1.05 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                className="text-blue-600 hover:text-blue-700 font-medium"
-                                            >
-                                                Activer
-                                            </motion.button>
-                                        </div>
-
-                                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                                            <div className="flex items-center">
-                                                <Mail className="w-5 h-5 text-gray-400 mr-3" />
-                                                <div>
-                                                    <p className="font-medium text-gray-800">Email de récupération</p>
-                                                    <p className="text-sm text-gray-500">{user?.email}</p>
-                                                </div>
-                                            </div>
-                                            <motion.button
-                                                whileHover={{ scale: 1.05 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                className="text-blue-600 hover:text-blue-700 font-medium"
-                                            >
-                                                Modifier
-                                            </motion.button>
-                                        </div>
-                                    </div>
-
-                                    {/* Sessions actives */}
-                                    <div className="border-t pt-6">
-                                        <h4 className="font-semibold text-gray-800 mb-4">Sessions actives</h4>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center">
-                                                    <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-800">Paris, France · Chrome</p>
-                                                        <p className="text-sm text-gray-500">Session actuelle</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center">
-                                                    <div className="w-2 h-2 bg-gray-300 rounded-full mr-3"></div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-800">Lyon, France · Safari</p>
-                                                        <p className="text-sm text-gray-500">Il y a 2 jours</p>
-                                                    </div>
-                                                </div>
-                                                <button className="text-sm text-red-600 hover:text-red-700">
-                                                    Déconnecter
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                /* Formulaire changement de mot de passe */
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Mot de passe actuel
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showPassword.current ? "text" : "password"}
-                                                value={passwordData.current_password}
-                                                onChange={(e) => setPasswordData({ ...passwordData, current_password: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword({ ...showPassword, current: !showPassword.current })}
-                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                                            >
-                                                {showPassword.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Nouveau mot de passe
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showPassword.new ? "text" : "password"}
-                                                value={passwordData.new_password}
-                                                onChange={(e) => setPasswordData({ ...passwordData, new_password: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword({ ...showPassword, new: !showPassword.new })}
-                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                                            >
-                                                {showPassword.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Confirmer le mot de passe
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showPassword.confirm ? "text" : "password"}
-                                                value={passwordData.confirm_password}
-                                                onChange={(e) => setPasswordData({ ...passwordData, confirm_password: e.target.value })}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword({ ...showPassword, confirm: !showPassword.confirm })}
-                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                                            >
-                                                {showPassword.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Indicateurs de force du mot de passe */}
-                                    {passwordData.new_password && (
-                                        <div className="bg-gray-50 p-4 rounded-lg">
-                                            <p className="text-sm font-medium text-gray-700 mb-2">Force du mot de passe :</p>
-                                            <div className="flex space-x-1 mb-2">
-                                                <div className={`h-1 flex-1 rounded ${passwordData.new_password.length >= 6 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                                <div className={`h-1 flex-1 rounded ${/[A-Z]/.test(passwordData.new_password) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                                <div className={`h-1 flex-1 rounded ${/[0-9]/.test(passwordData.new_password) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                                <div className={`h-1 flex-1 rounded ${/[!@#$%^&*]/.test(passwordData.new_password) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                            </div>
-                                            <ul className="text-xs text-gray-500 space-y-1">
-                                                <li className="flex items-center">
-                                                    {passwordData.new_password.length >= 6 ? <CheckCircle className="w-3 h-3 text-green-500 mr-1" /> : <X className="w-3 h-3 text-red-500 mr-1" />}
-                                                    Au moins 6 caractères
-                                                </li>
-                                                <li className="flex items-center">
-                                                    {/[A-Z]/.test(passwordData.new_password) ? <CheckCircle className="w-3 h-3 text-green-500 mr-1" /> : <X className="w-3 h-3 text-red-500 mr-1" />}
-                                                    Une majuscule
-                                                </li>
-                                                <li className="flex items-center">
-                                                    {/[0-9]/.test(passwordData.new_password) ? <CheckCircle className="w-3 h-3 text-green-500 mr-1" /> : <X className="w-3 h-3 text-red-500 mr-1" />}
-                                                    Un chiffre
-                                                </li>
-                                                <li className="flex items-center">
-                                                    {/[!@#$%^&*]/.test(passwordData.new_password) ? <CheckCircle className="w-3 h-3 text-green-500 mr-1" /> : <X className="w-3 h-3 text-red-500 mr-1" />}
-                                                    Un caractère spécial
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    <div className="flex space-x-4 pt-4">
-                                        <motion.button
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            onClick={handleChangePassword}
-                                            disabled={loading}
-                                            className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all"
-                                        >
-                                            {loading ? "Modification..." : "Changer le mot de passe"}
-                                        </motion.button>
-                                        <motion.button
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            onClick={() => setChangingPassword(false)}
-                                            className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 transition"
-                                        >
-                                            Annuler
-                                        </motion.button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-
-                {activeTab === "documents" && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="max-w-2xl mx-auto space-y-6"
-                    >
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start">
-                            <Shield className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
-                            <p className="text-sm text-blue-700">
-                                Vos documents sont analysés automatiquement par notre IA pour pré-remplir votre profil.
-                                Ils sont stockés de façon sécurisée et chiffrée.
-                            </p>
-                        </div>
-
-                        {/* CIN */}
-                        <DocumentCard
-                            title="Carte Nationale d'Identité"
-                            docType="cin"
-                            icon={<CreditCard className="w-6 h-6 text-white" />}
-                            color="from-blue-500 to-blue-700"
-                            document={documents.cin}
-                            loading={ocrLoading["cin"]}
-                            onUpload={handleDocumentUpload}
-                            fields={[
-                                { label: "N° CIN", value: documents.cin.data?.cin_number },
-                                { label: "Nom", value: documents.cin.data?.last_name },
-                                { label: "Prénom", value: documents.cin.data?.first_name },
-                                { label: "Date naissance", value: documents.cin.data?.birth_date },
-                                { label: "Expiration", value: documents.cin.data?.expiry_date },
-                            ]}
-                        />
-
-                        <DocumentCard
-                            title="Permis de Conduire"
-                            docType="permis"
-                            icon={<Car className="w-6 h-6 text-white" />}
-                            color="from-purple-500 to-purple-700"
-                            document={documents.permis}
-                            loading={ocrLoading["permis"]}
-                            onUpload={handleDocumentUpload}
-                            fields={[
-                                { label: "N° Permis", value: documents.permis.data?.permis_number },
-                                { label: "Prénom", value: documents.permis.data?.first_name },
-                                { label: "Nom", value: documents.permis.data?.last_name },
-                                { label: "Date naissance", value: documents.permis.data?.birth_date },
-                                { label: "Date délivrance", value: documents.permis.data?.issue_date },
-                                { label: "Expiration", value: documents.permis.data?.expiry_date },
-                                {
-                                    label: "Catégories", value: documents.permis.data?.categories?.length > 0
-                                        ? documents.permis.data.categories.join(", ")
-                                        : undefined
-                                },
-                            ]}
-                        />
-                        {/* Carte Grise */}
-                        <DocumentCard
-                            title="Carte Grise (Véhicule)"
-                            docType="carte_grise"
-                            icon={<FileText className="w-6 h-6 text-white" />}
-                            color="from-emerald-500 to-emerald-700"
-                            document={documents.carte_grise}
-                            loading={ocrLoading["carte_grise"]}
-                            onUpload={handleDocumentUpload}
-                            fields={[
-                                { label: "Immatriculation", value: documents.carte_grise.data?.immatriculation },
-                                { label: "Ancienne immat.", value: documents.carte_grise.data?.immatriculation_ancienne },
-                                { label: "Propriétaire", value: documents.carte_grise.data?.owner_name },
-                                { label: "1ère MC", value: documents.carte_grise.data?.first_registration },
-                                { label: "MC au Maroc", value: documents.carte_grise.data?.maroc_registration },
-                                { label: "Fin de validité", value: documents.carte_grise.data?.expiry_date },
-                                { label: "Usage", value: documents.carte_grise.data?.usage },
-                            ]}
-                        />
-                    </motion.div>
-                )}
-
-                {/* Tab Activité */}
-                {activeTab === "activity" && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                    >
-                        {/* Graphique d'activité */}
-                        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-                            <h3 className="text-xl font-bold text-gray-800 mb-4">Activité récente</h3>
-                            <div className="h-64 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl flex items-center justify-center">
-                                <p className="text-gray-500">Graphique d'activité (à implémenter)</p>
-                            </div>
-                        </div>
-
-                        {/* Réservations récentes */}
-                        <div className="bg-white rounded-2xl shadow-lg p-6">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xl font-bold text-gray-800">Dernières réservations</h3>
-                                <Link
-                                    href="/Client/bookings"
-                                    className="text-blue-600 hover:text-blue-700 font-medium flex items-center"
-                                >
-                                    Voir tout
-                                    <ChevronRight className="w-4 h-4 ml-1" />
-                                </Link>
-                            </div>
-
-                            <div className="space-y-4">
-                                {recentBookings.map((booking) => (
-                                    <div
-                                        key={booking.id}
-                                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition cursor-pointer"
-                                        onClick={() => handleViewBooking(booking.id)}
-                                    >
-                                        <div className="flex items-center space-x-4">
-                                            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                                                <Car className="w-6 h-6 text-white" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-gray-800">
-                                                    {booking.vehicule.brand} {booking.vehicule.model}
-                                                </p>
-                                                <p className="text-sm text-gray-500">
-                                                    {formatDate(booking.start_date)} - {formatDate(booking.end_date)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="font-bold text-gray-800">{booking.total_price}€</p>
-                                            {getStatusBadge(booking.status)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Statistiques détaillées */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-                            <div className="bg-white rounded-2xl shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h4 className="font-semibold text-gray-800">Jours de location</h4>
-                                    <Calendar className="w-5 h-5 text-blue-600" />
-                                </div>
-                                <p className="text-3xl font-bold text-gray-800">45</p>
-                                <p className="text-sm text-gray-500 mt-1">Total des jours loués</p>
-                            </div>
-
-                            <div className="bg-white rounded-2xl shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h4 className="font-semibold text-gray-800">Économies</h4>
-                                    <TrendingUp className="w-5 h-5 text-green-600" />
-                                </div>
-                                <p className="text-3xl font-bold text-gray-800">230€</p>
-                                <p className="text-sm text-gray-500 mt-1">Grâce au programme fidélité</p>
-                            </div>
-
-                            <div className="bg-white rounded-2xl shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h4 className="font-semibold text-gray-800">Favoris</h4>
-                                    <Heart className="w-5 h-5 text-red-600" />
-                                </div>
-                                <p className="text-3xl font-bold text-gray-800">6</p>
-                                <p className="text-sm text-gray-500 mt-1">Véhicules enregistrés</p>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-            </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+          <p className="mt-4 text-gray-500 text-sm">Chargement du profil…</p>
         </div>
+      </div>
     );
+  }
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "profile", label: "Profil" },
+    { id: "security", label: "Sécurité" },
+    { id: "documents", label: "Documents" },
+    { id: "activity", label: "Activité" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar user={user} setUser={setUser} />
+
+      <div className="pt-20 pb-12 max-w-6xl mx-auto px-4">
+        {/* Global message */}
+        <AnimatePresence>
+          {msg && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className={`mb-6 p-3 rounded-xl flex items-center gap-2 text-sm ${
+                msg.type === "success"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
+              }`}
+            >
+              {msg.type === "success" ? (
+                <CheckCircle className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
+              {msg.text}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-8 border-b border-gray-200">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-3 text-sm font-medium relative transition ${
+                tab === t.id
+                  ? "text-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+              {tab === t.id && (
+                <motion.div
+                  layoutId="clientTab"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── TAB PROFIL ──────────────────────────────────────────────────── */}
+        {tab === "profile" && (
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Sidebar */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-2xl shadow-md p-6 sticky top-20">
+                {/* Avatar */}
+                <div className="text-center mb-6">
+                  <div className="relative inline-block">
+                    <div className="w-28 h-28 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center overflow-hidden mx-auto">
+                      {avatarSrc ? (
+                        <img
+                          src={getImageUrl(avatarSrc)}
+                          alt="avatar"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-4xl font-bold text-white">
+                          {getInitial()}
+                        </span>
+                      )}
+                    </div>
+                    <label className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 shadow-md transition">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarChange}
+                        className="hidden"
+                      />
+                      {uploadingAvatar ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4 text-white" />
+                      )}
+                    </label>
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-800 mt-3">
+                    {form.first_name && form.last_name
+                      ? `${form.first_name} ${form.last_name}`
+                      : user?.name}
+                  </h2>
+                  <p className="text-sm text-gray-500">Client</p>
+                  <div className="inline-flex items-center gap-1 bg-green-50 text-green-600 text-xs px-3 py-1 rounded-full mt-2">
+                    <CheckCircle className="w-3 h-3" /> Compte actif
+                  </div>
+                </div>
+
+                {/* Infos CIN & Permis */}
+                <div className="space-y-3 mb-4">
+                  {(user?.cin_number || user?.cin_expiry_date) && (
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <IdCard className="w-4 h-4 text-blue-500" />
+                        <span className="text-xs font-semibold text-gray-600">
+                          Carte d'Identité
+                        </span>
+                      </div>
+                      {user?.cin_number && (
+                        <p className="text-sm text-gray-800">
+                          N°: {user.cin_number}
+                        </p>
+                      )}
+                      {user?.cin_expiry_date && (
+                        <p className="text-xs text-gray-500">
+                          Expire le:{" "}
+                          {new Date(user.cin_expiry_date).toLocaleDateString(
+                            "fr-FR",
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {(user?.permis_number ||
+                    user?.permis_categories ||
+                    user?.permis_expiry_date) && (
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Fingerprint className="w-4 h-4 text-purple-500" />
+                        <span className="text-xs font-semibold text-gray-600">
+                          Permis de Conduire
+                        </span>
+                      </div>
+                      {user?.permis_number && (
+                        <p className="text-sm text-gray-800">
+                          N°: {user.permis_number}
+                        </p>
+                      )}
+                      {user?.permis_categories && (
+                        <p className="text-xs text-gray-600">
+                          Catégories: {user.permis_categories}
+                        </p>
+                      )}
+                      {user?.permis_expiry_date && (
+                        <p className="text-xs text-gray-500">
+                          Expire le:{" "}
+                          {new Date(user.permis_expiry_date).toLocaleDateString(
+                            "fr-FR",
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick stats */}
+                <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                  {[
+                    { val: stats.bookings_count, label: "Réservations" },
+                    { val: stats.reviews_count, label: "Avis" },
+                    { val: stats.completed_bookings, label: "Terminées" },
+                  ].map((s) => (
+                    <div key={s.label} className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-lg font-bold text-gray-800">{s.val}</p>
+                      <p className="text-xs text-gray-500">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total dépensé */}
+                {stats.total_spent > 0 && (
+                  <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl p-3 mb-4 text-center">
+                    <p className="text-white/80 text-xs">Total dépensé</p>
+                    <p className="text-white text-xl font-bold">
+                      {stats.total_spent} MAD
+                    </p>
+                  </div>
+                )}
+
+                {!editing && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 hover:shadow-md transition"
+                  >
+                    <Edit2 className="w-4 h-4" /> Modifier le profil
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-2xl shadow-md p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-5">
+                  {editing ? "Modifier le profil" : "Informations personnelles"}
+                </h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      {
+                        label: "Prénom",
+                        key: "first_name" as const,
+                        icon: User,
+                        placeholder: "Mohammed",
+                      },
+                      {
+                        label: "Nom",
+                        key: "last_name" as const,
+                        icon: User,
+                        placeholder: "Alami",
+                      },
+                    ].map(({ label, key, icon: Icon, placeholder }) => (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          {label}
+                        </label>
+                        {editing ? (
+                          <div className="relative">
+                            <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <input
+                              type="text"
+                              value={form[key]}
+                              onChange={(e) =>
+                                setForm((f) => ({
+                                  ...f,
+                                  [key]: e.target.value,
+                                }))
+                              }
+                              placeholder={placeholder}
+                              className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-gray-800 py-2 text-sm">
+                            {form[key] || (
+                              <span className="text-gray-400">
+                                Non renseigné
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {[
+                    {
+                      label: "Email",
+                      key: "email",
+                      icon: Mail,
+                      value: user?.email,
+                      readOnly: true,
+                    },
+                  ].map(({ label, icon: Icon, value }) => (
+                    <div key={label}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {label}
+                      </label>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                        <Icon className="w-4 h-4 text-gray-400" />
+                        {value}
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-auto">
+                          Non modifiable
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {[
+                    {
+                      label: "Téléphone",
+                      key: "phone" as const,
+                      icon: Phone,
+                      placeholder: "+212 6XX XXX XXX",
+                    },
+                    {
+                      label: "Ville",
+                      key: "city" as const,
+                      icon: MapPin,
+                      placeholder: "Casablanca",
+                    },
+                    {
+                      label: "Adresse",
+                      key: "address" as const,
+                      icon: MapPin,
+                      placeholder: "123 Rue Hassan II",
+                    },
+                  ].map(({ label, key, icon: Icon, placeholder }) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {label}
+                      </label>
+                      {editing ? (
+                        <div className="relative">
+                          <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input
+                            type="text"
+                            value={form[key]}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, [key]: e.target.value }))
+                            }
+                            placeholder={placeholder}
+                            className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-800 py-2">
+                          {form[key] || (
+                            <span className="text-gray-400">Non renseigné</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                  {editing && (
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 hover:shadow-md transition"
+                      >
+                        {saving ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
+                            Sauvegarde…
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4" /> Enregistrer
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setEditing(false)}
+                        className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition"
+                      >
+                        <X className="w-4 h-4" /> Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB SÉCURITÉ ────────────────────────────────────────────────── */}
+        {tab === "security" && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-2xl mx-auto"
+          >
+            <div className="bg-white rounded-2xl shadow-md p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-5">
+                Sécurité du compte
+              </h3>
+              {!changingPw ? (
+                <div className="space-y-3">
+                  {[
+                    {
+                      icon: Lock,
+                      title: "Mot de passe",
+                      sub: "Changer votre mot de passe",
+                      action: () => setChangingPw(true),
+                      label: "Changer",
+                    },
+                    {
+                      icon: Mail,
+                      title: "Email",
+                      sub: user?.email ?? "",
+                      action: () => {},
+                      label: "Modifier",
+                    },
+                  ].map(({ icon: Icon, title, sub, action, label }) => (
+                    <div
+                      key={title}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-5 h-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {title}
+                          </p>
+                          <p className="text-xs text-gray-500">{sub}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={action}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        {label}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {[
+                    {
+                      label: "Mot de passe actuel",
+                      val: pwCurrent,
+                      set: setPwCurrent,
+                      show: showPw.current,
+                      toggle: () =>
+                        setShowPw((p) => ({ ...p, current: !p.current })),
+                    },
+                    {
+                      label: "Nouveau mot de passe",
+                      val: pwNew,
+                      set: setPwNew,
+                      show: showPw.new,
+                      toggle: () => setShowPw((p) => ({ ...p, new: !p.new })),
+                    },
+                    {
+                      label: "Confirmer",
+                      val: pwConfirm,
+                      set: setPwConfirm,
+                      show: showPw.confirm,
+                      toggle: () =>
+                        setShowPw((p) => ({ ...p, confirm: !p.confirm })),
+                    },
+                  ].map(({ label, val, set, show, toggle }) => (
+                    <div key={label}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {label}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={show ? "text" : "password"}
+                          value={val}
+                          onChange={(e) => set(e.target.value)}
+                          className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
+                          {show ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleChangePw}
+                      disabled={saving}
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 hover:shadow-md transition"
+                    >
+                      {saving ? "Modification…" : "Changer le mot de passe"}
+                    </button>
+                    <button
+                      onClick={() => setChangingPw(false)}
+                      className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── TAB DOCUMENTS ───────────────────────────────────────────────── */}
+        {tab === "documents" && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-2xl mx-auto space-y-4"
+          >
+            {/* ── Résultat validation croisée ─────────────────── */}
+            {crossValidation && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`rounded-xl border p-4 ${
+                  crossValidation.success
+                    ? "bg-green-50 border-green-200"
+                    : "bg-red-50 border-red-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  {crossValidation.success ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                  )}
+                  <p
+                    className={`text-sm font-semibold ${
+                      crossValidation.success
+                        ? "text-green-800"
+                        : "text-red-700"
+                    }`}
+                  >
+                    {crossValidation.message}
+                  </p>
+                </div>
+
+                {/* Tableau des champs comparés */}
+                <div className="space-y-2">
+                  {Object.entries(crossValidation.fields).map(
+                    ([field, val]) => {
+                      const labels: Record<string, string> = {
+                        last_name: "Nom de famille",
+                        first_name: "Prénom",
+                        birth_date: "Date de naissance",
+                      };
+                      return (
+                        <div
+                          key={field}
+                          className={`flex items-center justify-between p-2 rounded-lg text-xs ${
+                            val.match ? "bg-green-100" : "bg-red-100"
+                          }`}
+                        >
+                          <span className="font-medium text-gray-600 w-32">
+                            {labels[field]}
+                          </span>
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="flex-1 text-center">
+                              <p className="text-gray-400 text-xs">CIN</p>
+                              <p className="font-semibold text-gray-800">
+                                {val.cin ?? "—"}
+                              </p>
+                            </div>
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                                val.match ? "bg-green-500" : "bg-red-500"
+                              }`}
+                            >
+                              {val.match ? (
+                                <CheckCircle className="w-3.5 h-3.5 text-white" />
+                              ) : (
+                                <X className="w-3.5 h-3.5 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 text-center">
+                              <p className="text-gray-400 text-xs">Permis</p>
+                              <p className="font-semibold text-gray-800">
+                                {val.permis ?? "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+
+                {/* Bouton relancer si échec */}
+                {!crossValidation.success && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { data } = await api.post(
+                          "/documents/validate-cross",
+                        );
+                        setCrossValidation(data);
+                      } catch {
+                        showMsg("error", "Erreur lors de la validation.");
+                      }
+                    }}
+                    className="mt-3 text-xs text-red-600 underline hover:text-red-800"
+                  >
+                    Relancer la validation
+                  </button>
+                )}
+              </motion.div>
+            )}
+
+            {/* Badge "documents vérifiés" si tout est ok */}
+            {crossValidation?.success && (
+              <div className="flex items-center gap-2 bg-green-100 border border-green-300 rounded-xl px-4 py-2">
+                <BadgeCheck className="w-5 h-5 text-green-600" />
+                <span className="text-sm font-semibold text-green-800">
+                  Documents vérifiés — CIN et Permis correspondent
+                </span>
+                <span className="ml-auto text-xs text-green-600">
+                  Profil de confiance ✓
+                </span>
+              </div>
+            )}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+              <Shield className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">
+                Documents analysés automatiquement par notre IA. Stockés de
+                façon sécurisée.
+              </p>
+            </div>
+
+            {/* CIN - Recto */}
+            <DocCard
+              title="Carte Nationale d'Identité (Recto)"
+              icon={<CreditCard className="w-5 h-5 text-white" />}
+              color="from-blue-500 to-blue-700"
+              uploaded={docs.cin.uploaded}
+              loading={ocrLoading["cin"] ?? false}
+              onUpload={(e) => handleDocUpload(e, "cin")}
+              fields={[
+                { label: "N° CIN", value: docs.cin.data?.cin_number },
+                { label: "Nom", value: docs.cin.data?.last_name },
+                { label: "Prénom", value: docs.cin.data?.first_name },
+                { label: "Date naissance", value: docs.cin.data?.birth_date },
+                { label: "Expiration", value: docs.cin.data?.expiry_date },
+              ]}
+            />
+
+            {/* CIN - Verso */}
+            <DocCard
+              title="Carte Nationale d'Identité (Verso)"
+              icon={<CreditCard className="w-5 h-5 text-white" />}
+              color="from-indigo-500 to-indigo-700"
+              uploaded={docs.cin_verso.uploaded}
+              loading={ocrLoading["cin_verso"] ?? false}
+              onUpload={(e) => handleDocUpload(e, "cin_verso")}
+              fields={[
+                { label: "Adresse", value: docs.cin_verso.data?.address },
+                {
+                  label: "Genre",
+                  value:
+                    docs.cin_verso.data?.gender === "M"
+                      ? "Masculin"
+                      : docs.cin_verso.data?.gender === "F"
+                        ? "Féminin"
+                        : undefined,
+                },
+              ]}
+            />
+
+            {/* Permis - Recto */}
+            <DocCard
+              title="Permis de Conduire (Recto)"
+              icon={<Car className="w-5 h-5 text-white" />}
+              color="from-purple-500 to-purple-700"
+              uploaded={docs.permis.uploaded}
+              loading={ocrLoading["permis"] ?? false}
+              onUpload={(e) => handleDocUpload(e, "permis")}
+              fields={[
+                { label: "N° Permis", value: docs.permis.data?.permis_number },
+                { label: "Prénom", value: docs.permis.data?.first_name },
+                { label: "Nom", value: docs.permis.data?.last_name },
+                {
+                  label: "Date naissance",
+                  value: docs.permis.data?.birth_date,
+                },
+                { label: "Délivrance", value: docs.permis.data?.issue_date },
+                { label: "Expiration", value: docs.permis.data?.expiry_date },
+                {
+                  label: "Catégories",
+                  value: docs.permis.data?.categories?.join(", "),
+                },
+              ]}
+            />
+
+            {/* Permis - Verso */}
+            <DocCard
+              title="Permis de Conduire (Verso)"
+              icon={<Car className="w-5 h-5 text-white" />}
+              color="from-pink-500 to-rose-700"
+              uploaded={docs.permis_verso.uploaded}
+              loading={ocrLoading["permis_verso"] ?? false}
+              onUpload={(e) => handleDocUpload(e, "permis_verso")}
+              fields={[
+                {
+                  label: "N° Permis (complet)",
+                  value: docs.permis_verso.data?.permis_number,
+                },
+                {
+                  label: "Expiration",
+                  value: docs.permis_verso.data?.expiry_date,
+                },
+                {
+                  label: "Catégories",
+                  value: docs.permis_verso.data?.categories?.join(", "),
+                },
+              ]}
+            />
+          </motion.div>
+        )}
+
+        {/* ── TAB ACTIVITÉ ────────────────────────────────────────────────── */}
+        {tab === "activity" && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            {/* Dernières réservations */}
+            <div className="bg-white rounded-2xl shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-800">
+                  Dernières réservations
+                </h3>
+                <Link
+                  href="/Client/bookings"
+                  className="text-sm text-blue-600 flex items-center gap-1"
+                >
+                  Voir tout <ChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+              {loadingBookings ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                </div>
+              ) : bookings.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Car className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">Aucune réservation pour le moment</p>
+                  <button
+                    onClick={() => router.push("/vehicules")}
+                    className="mt-4 text-sm text-blue-600 hover:underline"
+                  >
+                    Trouver un véhicule
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {bookings.map((booking) => (
+                    <BookingCard key={booking.id} booking={booking} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Derniers avis */}
+            <div className="bg-white rounded-2xl shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-800">
+                  Mes derniers avis
+                </h3>
+                <Link
+                  href="/Client/reviews"
+                  className="text-sm text-blue-600 flex items-center gap-1"
+                >
+                  Voir tout <ChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+              {loadingReviews ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Star className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">Aucun avis pour le moment</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Les avis apparaissent après une réservation terminée
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reviews.map((review) => (
+                    <ReviewCard key={review.id} review={review} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
 }

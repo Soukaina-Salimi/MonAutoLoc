@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import Sidebar from "@/components/Sidebar";
+
 import {
     Car,
     PlusCircle,
@@ -64,6 +66,7 @@ export default function Vehicles() {
     const [user, setUser] = useState<User | null>(null);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [itemsPerPage] = useState<number>(6);
+    const currentPath = "/owner/vehicules";
 
     useEffect(() => {
         const userData = localStorage.getItem("user");
@@ -147,7 +150,7 @@ export default function Vehicles() {
     };
 
     const handleViewVehicle = (id: number) => {
-        router.push(`/owner/vehicules/${id}/details`);
+        router.push(`/owner/vehicules/${id}`);
     };
 
     const handleDeleteVehicle = async (id: number) => {
@@ -197,73 +200,14 @@ export default function Vehicles() {
     return (
         <div className="min-h-screen bg-gray-50 flex">
             {/* Sidebar */}
-            <div className={`
-                fixed inset-y-0 left-0 transform 
-                ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} 
-                lg:relative lg:translate-x-0 transition duration-200 ease-in-out
-                w-64 bg-white shadow-lg z-30
-            `}>
-                <div className="h-full flex flex-col">
-                    {/* Profile Section */}
-                    <div className="p-6 border-b">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">
-                                    {user?.name?.charAt(0).toUpperCase() || "U"}
-                                </span>
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="font-semibold text-gray-800 truncate">{user?.name}</h3>
-                                <p className="text-sm text-gray-500">Propriétaire</p>
-                            </div>
-                        </div>
-                    </div>
+           <Sidebar
+                user={user || undefined}
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                currentPath={currentPath}
+            />
+            {isSidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-                    {/* Navigation */}
-                    <nav className="flex-1 p-4">
-                        <div className="space-y-2">
-                            <button
-                                onClick={handleDashboard}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <LayoutDashboard className="w-5 h-5" />
-                                <span>Tableau de bord</span>
-                            </button>
-                            <button
-                                onClick={handleBookings}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <Calendar className="w-5 h-5" />
-                                <span>Réservations</span>
-                            </button>
-                            <button
-                                onClick={() => { }}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-blue-600 bg-blue-50 rounded-lg font-medium"
-                            >
-                                <Car className="w-5 h-5" />
-                                <span>Mes véhicules</span>
-                            </button>
-                            <button
-                                onClick={handleAddVehicules}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <PlusCircle className="w-5 h-5" />
-                                <span>Ajouter véhicule</span>
-                            </button>
-                        </div>
-
-                        <div className="absolute bottom-4 left-4 right-4">
-                            <button
-                                onClick={handleLogout}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition duration-200"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                <span>Déconnexion</span>
-                            </button>
-                        </div>
-                    </nav>
-                </div>
-            </div>
 
             {/* Mobile sidebar backdrop */}
             {isSidebarOpen && (

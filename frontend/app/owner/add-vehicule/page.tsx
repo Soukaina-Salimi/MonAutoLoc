@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
+import Sidebar from "@/components/Sidebar";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
-    Car, PlusCircle, LayoutDashboard, Calendar, Settings, Bell,
+    Car, PlusCircle, LayoutDashboard, Calendar, Settings, Bell, DollarSign,
     Menu, LogOut, X, Upload, ArrowLeft, Fuel, Gauge, Users,
     MapPin, Palette, Bike, Truck, Cpu, ScanLine, CheckCircle,
     ChevronDown, ChevronUp, Loader2, FileText, RotateCcw
@@ -26,10 +28,79 @@ interface OcrPrefilled {
     engineCc?: boolean;
     puissance?: boolean;
     category?: boolean;
+    year?: boolean;  // Ajout pour l'année
 }
+// ── AVANT export default function AddVehicle() { ──────────
+// Ce composant doit être DEHORS du composant principal
 
+const OcrInput = ({
+    label, value, onChange, placeholder, type = "text",
+    required, icon, isPrefilled, onClearPrefill, min, max, step
+}: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    type?: string;
+    required?: boolean;
+    icon?: React.ReactNode;
+    isPrefilled?: boolean;
+    onClearPrefill?: () => void;
+    min?: string;
+    max?: string;
+    step?: string;
+}) => {
+    return (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+                {icon && <span className="inline mr-1">{icon}</span>}
+                {label} {required && <span className="text-red-500">*</span>}
+                {isPrefilled && (
+                    <span className="ml-2 text-xs text-green-600 font-normal inline-flex items-center gap-1">
+                        <ScanLine className="w-3 h-3" /> OCR
+                    </span>
+                )}
+            </label>
+            <div className="relative">
+                <input
+                    type={type}
+                    placeholder={placeholder}
+                    value={value}
+                    onChange={e => {
+                        onChange(e.target.value);
+                        if (onClearPrefill) onClearPrefill();
+                    }}
+                    min={min} max={max} step={step}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${isPrefilled
+                            ? 'border-green-400 bg-green-50 text-green-800 pr-10'
+                            : 'border-gray-300 pr-4'
+                        }`}
+                />
+                {isPrefilled && onClearPrefill && (
+                    <button
+                        type="button"
+                        onClick={onClearPrefill}
+                        title="Retirer le badge OCR"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 hover:text-gray-400 transition-colors"
+                    >
+                        <CheckCircle className="w-5 h-5" />
+                    </button>
+                )}
+            </div>
+            {isPrefilled && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <ScanLine className="w-3 h-3" /> Pré-rempli depuis la carte grise
+                </p>
+            )}
+        </div>
+    );
+};
+
+// ── Maintenant le composant principal ─────────────────────
 export default function AddVehicle() {
     const router = useRouter();
+    const currentPath = "/owner/add-vehicule";
 
     // Champs formulaire
     const [brand, setBrand] = useState("");
@@ -51,7 +122,15 @@ export default function AddVehicle() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [user, setUser] = useState<User | null>(null);
     const [ocrPrefilled, setOcrPrefilled] = useState<OcrPrefilled>({});
-
+    // Ajoute ces states avec les autres
+    const [immatriculationAncienne, setImmatriculationAncienne] = useState("");
+    const [firstRegistration, setFirstRegistration] = useState("");
+    const [expiryDateCG, setExpiryDateCG] = useState("");
+    const [chassis, setChassis] = useState("");
+    const [ptac, setPtac] = useState("");
+    const [cylindres, setCylindres] = useState("");
+    const [genre, setGenre] = useState("");
+    const [ownerNameCG, setOwnerNameCG] = useState("");
     // OCR states
     const [ocrSectionOpen, setOcrSectionOpen] = useState(false);
     const [ocrRectoFile, setOcrRectoFile] = useState<File | null>(null);
@@ -64,6 +143,9 @@ export default function AddVehicle() {
     const [ocrVersoPreview, setOcrVersoPreview] = useState<string | null>(null);
     const [immatriculation, setImmatriculation] = useState<string | null>(null);
 
+    const [offersDriver, setOffersDriver] = useState(false);
+    const [driverDailyRate, setDriverDailyRate] = useState("");
+
     useEffect(() => {
         const userData = localStorage.getItem("user");
         if (!userData) { router.push("/login"); return; }
@@ -74,6 +156,8 @@ export default function AddVehicle() {
         } catch { router.push("/login"); }
         return () => { previews.forEach(p => URL.revokeObjectURL(p)); };
     }, []);
+
+    // Dans add-vehicule, remplacez fetch par api
 
     // === OCR RECTO ===
     const handleOcrRecto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,27 +170,41 @@ export default function AddVehicle() {
 
         try {
             const formData = new FormData();
-            formData.append("file", file);
+            formData.append("document", file);
             formData.append("doc_type", "carte_grise");
 
-            const res = await fetch("http://localhost:8001/ocr/extract", {
-                method: "POST",
-                body: formData,
+            const { data } = await api.post("/documents/upload", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
             });
-            const data = await res.json();
-            setOcrRectoResult(data);
 
-            if (data.success && data.data) {
-                const d = data.data;
+            console.log("OCR Recto response:", data);
+
+            // ✅ L'API retourne extracted_data, pas data.data
+            const d = data.extracted_data;
+            setOcrRectoResult(d);  // stocker extracted_data directement
+
+            if (d) {
                 const newPrefilled: OcrPrefilled = {};
 
-                // Immatriculation (affiché mais pas dans le form)
+                // Immatriculation
                 if (d.immatriculation) setImmatriculation(d.immatriculation);
+                if (d.immatriculation_ancienne) setImmatriculationAncienne(d.immatriculation_ancienne);
+                if (d.first_registration) setFirstRegistration(d.first_registration);
+                if (d.expiry_date) setExpiryDateCG(d.expiry_date);
+                if (d.owner_name) setOwnerNameCG(d.owner_name);
+                // Année depuis first_registration (format JJ/MM/AAAA)
+                if (d.first_registration) {
+                    const yearMatch = d.first_registration.match(/(\d{4})$/);
+                    if (yearMatch) {
+                        setYear(yearMatch[1]);
+                        newPrefilled.year = true;
+                    }
+                }
 
-                // Déduire catégorie depuis l'usage
+                // Usage pour catégorie
                 if (d.usage) {
                     const usageLower = d.usage.toLowerCase();
-                    if (usageLower.includes("particulier")) {
+                    if (usageLower.includes("particulier") || usageLower.includes("sans chauffeur")) {
                         setCategory("voiture");
                         newPrefilled.category = true;
                     } else if (usageLower.includes("camion") || usageLower.includes("utilitaire")) {
@@ -135,70 +233,76 @@ export default function AddVehicle() {
 
         try {
             const formData = new FormData();
-            formData.append("file", file);
+            formData.append("document", file);
             formData.append("doc_type", "carte_grise_verso");
 
-            const res = await fetch("http://localhost:8001/ocr/extract", {
-                method: "POST",
-                body: formData,
+            const { data } = await api.post("/documents/upload", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
             });
-            const data = await res.json();
-            setOcrVersoResult(data);
 
-            if (data.success && data.data) {
-                const d = data.data;
+            console.log("OCR Verso response:", data);
+
+            // ✅ L'API retourne extracted_data, pas data.data
+            const d = data.extracted_data;
+            setOcrVersoResult(d);  // stocker extracted_data directement
+
+            if (d) {
                 const newPrefilled: OcrPrefilled = {};
 
-                // Marque
+                // Marque — clé correcte : "marque"
                 if (d.marque) {
                     setBrand(d.marque);
                     newPrefilled.brand = true;
                 }
-
-                // Modèle
-                if (d.modele) {
-                    setModel(d.modele);
-                    newPrefilled.model = true;
-                }
-
-                // Carburant
+                if (d.chassis) setChassis(d.chassis);
+                if (d.ptac) setPtac(String(d.ptac));
+                if (d.cylindres) setCylindres(String(d.cylindres));
+                if (d.genre) setGenre(d.genre);
+                // Carburant — clé correcte : "carburant"
                 if (d.carburant) {
                     const map: Record<string, string> = {
                         "diesel": "Diesel",
                         "essence": "Essence",
                         "hybride": "Hybride",
                         "electrique": "Électrique",
+                        "électrique": "Électrique",
                         "gpl": "GPL",
-                        "gnv": "GPL",
                     };
                     const mapped = map[d.carburant.toLowerCase()];
                     if (mapped) { setFuelType(mapped); newPrefilled.fuelType = true; }
+                    else { setFuelType(d.carburant); newPrefilled.fuelType = true; }
                 }
 
-                // Puissance fiscale
+                // Puissance fiscale — clé correcte : "puissance_fiscale"
                 if (d.puissance_fiscale) {
                     setPuissance(String(d.puissance_fiscale));
                     newPrefilled.puissance = true;
                 }
 
-                // Nombre de places
+                // Nombre de places — clé correcte : "nb_places"
                 if (d.nb_places && d.nb_places > 0) {
                     setSeats(String(d.nb_places));
                     newPrefilled.seats = true;
                 }
 
-                // Cylindres -> engineCc (approximation: cylindres * 250cc)
-                if (d.cylindres && d.cylindres > 0 && !d.nb_places) {
-                    setEngineCc(String(d.cylindres * 250));
-                    newPrefilled.engineCc = true;
-                }
-
-                // Genre -> catégorie
+                // Genre → catégorie — clé correcte : "genre"
                 if (d.genre) {
                     const g = d.genre.toLowerCase();
-                    if (g.includes("particulier")) { setCategory("voiture"); newPrefilled.category = true; }
-                    else if (g.includes("camion")) { setCategory("camion"); newPrefilled.category = true; }
-                    else if (g.includes("utilitaire")) { setCategory("utilitaire"); newPrefilled.category = true; }
+                    if (g.includes("interieure") || g.includes("particulier")) {
+                        setCategory("voiture");
+                        newPrefilled.category = true;
+                    } else if (g.includes("camion")) {
+                        setCategory("camion");
+                        newPrefilled.category = true;
+                    } else if (g.includes("utilitaire")) {
+                        setCategory("utilitaire");
+                        newPrefilled.category = true;
+                    }
+                }
+
+                // VIN — clé correcte : "chassis"
+                if (d.chassis) {
+                    console.log("VIN:", d.chassis);
                 }
 
                 setOcrPrefilled(prev => ({ ...prev, ...newPrefilled }));
@@ -209,7 +313,12 @@ export default function AddVehicle() {
             setOcrVersoLoading(false);
         }
     };
-
+    const handleAddVehicules = (): void => {
+        router.push("/owner/add-vehicule");
+    };
+    const handleProfil = (): void => {
+        router.push("/owner/profile");
+    };
     // Réinitialiser un champ pré-rempli
     const clearOcrField = (field: keyof OcrPrefilled) => {
         setOcrPrefilled(prev => ({ ...prev, [field]: false }));
@@ -249,9 +358,27 @@ export default function AddVehicle() {
             if (city) formData.append("city", city);
             if (address) formData.append("address", address);
             if (description) formData.append("description", description);
+            if (immatriculation) formData.append("immatriculation", immatriculation);
+            if (immatriculationAncienne) formData.append("immatriculation_ancienne", immatriculationAncienne);
+            if (firstRegistration) formData.append("first_registration", firstRegistration);
+            if (expiryDateCG) formData.append("expiry_date_cg", expiryDateCG);
+            if (ownerNameCG) formData.append("owner_name_cg", ownerNameCG);
+            if (chassis) formData.append("chassis", chassis);
+            if (genre) formData.append("genre", genre);
+            if (ptac) formData.append("ptac", ptac);
+            if (cylindres) formData.append("cylindres", cylindres);
+            // Ajout des données chauffeur
+            if (offersDriver) {
+                formData.append("offers_driver", "1");
+                if (driverDailyRate) {
+                    formData.append("driver_daily_rate", driverDailyRate);
+                }
+            } else {
+                formData.append("offers_driver", "0");
+            }
             images.forEach(img => formData.append("images[]", img));
             await api.post("/vehicules", formData, {
-                headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
+                headers: { "Content-Type": "multipart/form-data" }
             });
             alert("✅ Véhicule ajouté!");
             router.push("/owner/vehicules");
@@ -278,91 +405,17 @@ export default function AddVehicle() {
     const fuelTypes = ["Essence", "Diesel", "Électrique", "Hybride", "GPL"];
     const transmissionTypes = ["Manuelle", "Automatique"];
 
-    // Composant input avec badge OCR
-    const OcrInput = ({
-        label, value, onChange, placeholder, type = "text", required, icon, fieldKey, min, max, step
-    }: {
-        label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-        type?: string; required?: boolean; icon?: React.ReactNode; fieldKey?: keyof OcrPrefilled;
-        min?: string; max?: string; step?: string;
-    }) => {
-        const isPrefilled = fieldKey && ocrPrefilled[fieldKey];
-        return (
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {icon && <span className="inline mr-1">{icon}</span>}
-                    {label} {required && <span className="text-red-500">*</span>}
-                </label>
-                <div className="relative">
-                    <input
-                        type={type}
-                        placeholder={placeholder}
-                        value={value}
-                        onChange={e => onChange(e.target.value)}
-                        min={min} max={max} step={step}
-                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none pr-${isPrefilled ? '10' : '4'}
-                            ${isPrefilled ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
-                    />
-                    {isPrefilled && fieldKey && (
-                        <button
-                            type="button"
-                            onClick={() => clearOcrField(fieldKey)}
-                            title="Effacer la valeur OCR"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 hover:text-gray-400 transition-colors"
-                        >
-                            <CheckCircle className="w-5 h-5" />
-                        </button>
-                    )}
-                </div>
-                {isPrefilled && (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                        <ScanLine className="w-3 h-3" /> Pré-rempli depuis la carte grise
-                    </p>
-                )}
-            </div>
-        );
-    };
+
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
             {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:relative lg:translate-x-0 transition duration-200 ease-in-out w-64 bg-white shadow-lg z-30`}>
-                <div className="h-full flex flex-col">
-                    <div className="p-6 border-b">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">{user?.name?.charAt(0).toUpperCase() || "O"}</span>
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="font-semibold text-gray-800 truncate">{user?.name}</h3>
-                                <p className="text-sm text-gray-500">Propriétaire</p>
-                            </div>
-                        </div>
-                    </div>
-                    <nav className="flex-1 p-4">
-                        <div className="space-y-2">
-                            {[
-                                { label: "Tableau de bord", icon: LayoutDashboard, onClick: () => router.push("/owner/dashboard") },
-                                { label: "Réservations", icon: Calendar, onClick: () => router.push("/owner/bookings") },
-                                { label: "Mes véhicules", icon: Car, onClick: () => router.push("/owner/vehicules") },
-                            ].map(item => (
-                                <button key={item.label} onClick={item.onClick} className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg">
-                                    <item.icon className="w-5 h-5" /><span>{item.label}</span>
-                                </button>
-                            ))}
-                            <button className="w-full flex items-center space-x-3 px-4 py-3 text-blue-600 bg-blue-50 rounded-lg font-medium">
-                                <PlusCircle className="w-5 h-5" /><span>Ajouter véhicule</span>
-                            </button>
-                        </div>
-                        <div className="absolute bottom-4 left-4 right-4">
-                            <button onClick={() => { localStorage.clear(); router.push("/"); }} className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg">
-                                <LogOut className="w-5 h-5" /><span>Déconnexion</span>
-                            </button>
-                        </div>
-                    </nav>
-                </div>
-            </div>
-
+            <Sidebar
+                user={user || undefined}
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                currentPath={currentPath}
+            />
             {isSidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
             {/* Main Content */}
@@ -457,21 +510,23 @@ export default function AddVehicle() {
                                                     Analyse en cours...
                                                 </div>
                                             )}
+                                            {/* Status recto */}
                                             {ocrRectoResult && !ocrRectoLoading && (
                                                 <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
-                                                    {immatriculation && (
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-gray-500">Immatriculation</span>
-                                                            <span className="font-bold text-gray-800 bg-yellow-100 px-2 py-0.5 rounded">{immatriculation}</span>
+                                                    {[
+                                                        ["Immatriculation", immatriculation],
+                                                        ["1ère mise en circulation", ocrRectoResult.first_registration],
+                                                        ["Propriétaire", ocrRectoResult.owner_name],
+                                                        ["Usage", ocrRectoResult.usage],
+                                                        ["Immat. ancienne", ocrRectoResult.immatriculation_ancienne],
+                                                        ["Expiration", ocrRectoResult.expiry_date],
+                                                    ].filter(([, v]) => v).map(([label, value]) => (
+                                                        <div key={label as string} className="flex items-center justify-between gap-2">
+                                                            <span className="text-gray-500 shrink-0">{label}</span>
+                                                            <span className="text-gray-700 font-medium text-right">{value as string}</span>
                                                         </div>
-                                                    )}
-                                                    {ocrRectoResult.data?.first_registration && (
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-gray-500">1ère MC</span>
-                                                            <span className="text-gray-700">{ocrRectoResult.data.first_registration}</span>
-                                                        </div>
-                                                    )}
-                                                    {!immatriculation && !ocrRectoResult.data?.first_registration && (
+                                                    ))}
+                                                    {!immatriculation && !ocrRectoResult.first_registration && (
                                                         <p className="text-gray-400 italic">Données limitées sur cette image</p>
                                                     )}
                                                 </div>
@@ -515,24 +570,25 @@ export default function AddVehicle() {
                                                     Analyse en cours...
                                                 </div>
                                             )}
+                                            {/* Status verso */}
                                             {ocrVersoResult && !ocrVersoLoading && (
                                                 <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
                                                     {[
-                                                        ["Marque", ocrVersoResult.data?.marque],
-                                                        ["Carburant", ocrVersoResult.data?.carburant],
-                                                        ["Puissance", ocrVersoResult.data?.puissance_fiscale ? `${ocrVersoResult.data.puissance_fiscale} CV` : null],
-                                                        ["Cylindres", ocrVersoResult.data?.cylindres],
-                                                        ["Places", ocrVersoResult.data?.nb_places],
-                                                        ["PTAC", ocrVersoResult.data?.ptac],
-                                                        ["Poids vide", ocrVersoResult.data?.poids_vide],
-                                                        ["N° véhicule", ocrVersoResult.data?.numero_vehicule],
+                                                        ["Marque", ocrVersoResult.marque],
+                                                        ["Carburant", ocrVersoResult.carburant],
+                                                        ["Puissance", ocrVersoResult.puissance_fiscale ? `${ocrVersoResult.puissance_fiscale} CV` : null],
+                                                        ["Places", ocrVersoResult.nb_places],
+                                                        ["Cylindres", ocrVersoResult.cylindres],
+                                                        ["PTAC", ocrVersoResult.ptac ? `${ocrVersoResult.ptac} kg` : null],
+                                                        ["Genre", ocrVersoResult.genre],
+                                                        ["VIN", ocrVersoResult.chassis],
                                                     ].filter(([, v]) => v).map(([label, value]) => (
-                                                        <div key={label as string} className="flex items-center justify-between">
-                                                            <span className="text-gray-500">{label}</span>
-                                                            <span className="text-gray-700 font-medium">{value as string}</span>
+                                                        <div key={label as string} className="flex items-center justify-between gap-2">
+                                                            <span className="text-gray-500 shrink-0">{label}</span>
+                                                            <span className="text-gray-700 font-medium text-right">{value as string}</span>
                                                         </div>
                                                     ))}
-                                                    {!ocrVersoResult.data?.marque && !ocrVersoResult.data?.carburant && (
+                                                    {!ocrVersoResult.marque && !ocrVersoResult.carburant && (
                                                         <p className="text-gray-400 italic">Données non lisibles</p>
                                                     )}
                                                 </div>
@@ -563,6 +619,7 @@ export default function AddVehicle() {
                             </div>
 
                             <div className="p-6 space-y-6">
+
                                 {/* Photos */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -604,6 +661,13 @@ export default function AddVehicle() {
                                     </div>
                                 </div>
 
+                                {/* ── Infos générales ───────────────────────────── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Informations générales</span>
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+
                                 {/* Catégorie */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -614,41 +678,58 @@ export default function AddVehicle() {
                                             </span>
                                         )}
                                     </label>
-                                    <select value={category} onChange={e => setCategory(e.target.value)}
+                                    <select
+                                        value={category}
+                                        onChange={e => { setCategory(e.target.value); clearOcrField("category"); }}
                                         className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
-                                            ${ocrPrefilled.category ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
-                                        {categories.map(cat => (
-                                            <option key={cat.value} value={cat.value}>{cat.label}</option>
-                                        ))}
+                    ${ocrPrefilled.category ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
+                                        {categories.map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
                                     </select>
                                 </div>
 
                                 {/* Marque & Modèle */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <OcrInput label="Marque" value={brand} onChange={setBrand}
-                                        placeholder="Ex: Renault, Peugeot..." required fieldKey="brand" />
-                                    <OcrInput label="Modèle" value={model} onChange={setModel}
-                                        placeholder="Ex: Clio, 308..." required fieldKey="model" />
+                                    <OcrInput
+                                        label="Marque" value={brand} onChange={setBrand}
+                                        placeholder="Ex: Dacia, Renault..." required
+                                        isPrefilled={ocrPrefilled.brand}
+                                        onClearPrefill={() => clearOcrField("brand")}
+                                    />
+                                    <OcrInput
+                                        label="Modèle" value={model} onChange={setModel}
+                                        placeholder="Ex: Logan, Clio..." required
+                                        isPrefilled={ocrPrefilled.model}
+                                        onClearPrefill={() => clearOcrField("model")}
+                                    />
                                 </div>
 
                                 {/* Année & Prix */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Année <span className="text-red-500">*</span>
-                                        </label>
-                                        <input type="number" placeholder="Ex: 2022" value={year} onChange={e => setYear(e.target.value)}
-                                            min="1900" max={String(new Date().getFullYear() + 1)}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                                    </div>
+                                    <OcrInput
+                                        label="Année" value={year} onChange={setYear}
+                                        placeholder="Ex: 2018" type="number" required
+                                        min="1900" max={String(new Date().getFullYear() + 1)}
+                                        isPrefilled={ocrPrefilled.year}
+                                        onClearPrefill={() => clearOcrField("year")}
+                                    />
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Prix par jour (MAD) <span className="text-red-500">*</span>
                                         </label>
-                                        <input type="number" placeholder="Ex: 300" value={price} onChange={e => setPrice(e.target.value)}
+                                        <input
+                                            type="number" placeholder="Ex: 300" value={price}
+                                            onChange={e => setPrice(e.target.value)}
                                             min="0" step="0.01"
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        />
                                     </div>
+                                </div>
+
+                                {/* ── Caractéristiques techniques ───────────────── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Caractéristiques techniques</span>
+                                    <div className="flex-1 h-px bg-gray-200" />
                                 </div>
 
                                 {/* Carburant & Transmission */}
@@ -662,9 +743,11 @@ export default function AddVehicle() {
                                                 </span>
                                             )}
                                         </label>
-                                        <select value={fuelType} onChange={e => setFuelType(e.target.value)}
+                                        <select
+                                            value={fuelType}
+                                            onChange={e => { setFuelType(e.target.value); clearOcrField("fuelType"); }}
                                             className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
-                                                ${ocrPrefilled.fuelType ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
+                        ${ocrPrefilled.fuelType ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
                                             {fuelTypes.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
                                     </div>
@@ -681,35 +764,283 @@ export default function AddVehicle() {
 
                                 {/* Places & Cylindrée & Puissance */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {(category === "voiture" || category === "utilitaire" || category === "van") && (
-                                        <OcrInput label="Nombre de places" value={seats} onChange={setSeats}
+                                    {(category === "voiture" || category === "utilitaire" || category === "van" || category === "camion") && (
+                                        <OcrInput
+                                            label="Nombre de places" value={seats} onChange={setSeats}
                                             placeholder="Ex: 5" type="number" min="1" max="50"
-                                            icon={<Users className="w-4 h-4 inline" />} fieldKey="seats" />
+                                            icon={<Users className="w-4 h-4 inline" />}
+                                            isPrefilled={ocrPrefilled.seats}
+                                            onClearPrefill={() => clearOcrField("seats")}
+                                        />
                                     )}
                                     {(category === "moto" || category === "scooter" || category === "quad") && (
-                                        <OcrInput label="Cylindrée (cm³)" value={engineCc} onChange={setEngineCc}
+                                        <OcrInput
+                                            label="Cylindrée (cm³)" value={engineCc} onChange={setEngineCc}
                                             placeholder="Ex: 125" type="number" min="50" max="5000"
-                                            icon={<Cpu className="w-4 h-4 inline" />} fieldKey="engineCc" />
+                                            icon={<Cpu className="w-4 h-4 inline" />}
+                                            isPrefilled={ocrPrefilled.engineCc}
+                                            onClearPrefill={() => clearOcrField("engineCc")}
+                                        />
                                     )}
-                                    <OcrInput label="Puissance (CV)" value={puissance} onChange={setPuissance}
-                                        placeholder="Ex: 100" type="number"
-                                        icon={<Palette className="w-4 h-4 inline" />} fieldKey="puissance" />
+                                    <OcrInput
+                                        label="Puissance fiscale (CV)" value={puissance} onChange={setPuissance}
+                                        placeholder="Ex: 6" type="number" min="1"
+                                        icon={<Gauge className="w-4 h-4 inline" />}
+                                        isPrefilled={ocrPrefilled.puissance}
+                                        onClearPrefill={() => clearOcrField("puissance")}
+                                    />
                                 </div>
 
-                                {/* Localisation */}
+                                {/* ── Données carte grise (toujours visibles) ──── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                                        <ScanLine className="w-3 h-3" /> Données carte grise
+                                    </span>
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* Immatriculation */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            Immatriculation
+                                            {immatriculation && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={immatriculation ?? ""}
+                                            onChange={e => setImmatriculation(e.target.value)}
+                                            placeholder="Ex: 12345-A-06"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${immatriculation ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* Immatriculation ancienne */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            Immatriculation ancienne
+                                            {immatriculationAncienne && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={immatriculationAncienne}
+                                            onChange={e => setImmatriculationAncienne(e.target.value)}
+                                            placeholder="Ex: WW123456"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${immatriculationAncienne ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* 1ère mise en circulation */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Calendar className="w-4 h-4" /> 1ère mise en circulation
+                                            {firstRegistration && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={firstRegistration}
+                                            onChange={e => setFirstRegistration(e.target.value)}
+                                            placeholder="Ex: 25/04/2018"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${firstRegistration ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* Expiration carte grise */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Calendar className="w-4 h-4" /> Expiration carte grise
+                                            {expiryDateCG && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={expiryDateCG}
+                                            onChange={e => setExpiryDateCG(e.target.value)}
+                                            placeholder="Ex: 25/06/2028"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${expiryDateCG ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* N° Châssis VIN */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Cpu className="w-4 h-4" /> N° Châssis (VIN)
+                                            {chassis && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={chassis}
+                                            onChange={e => setChassis(e.target.value)}
+                                            placeholder="Ex: VF1RFD00063254789"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm
+                        ${chassis ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* Genre */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Car className="w-4 h-4" /> Genre véhicule
+                                            {genre && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={genre}
+                                            onChange={e => setGenre(e.target.value)}
+                                            placeholder="Ex: CONDUITE INTERIEURE"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${genre ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* PTAC */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Truck className="w-4 h-4" /> PTAC (kg)
+                                            {ptac && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={ptac}
+                                            onChange={e => setPtac(e.target.value)}
+                                            placeholder="Ex: 1575"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${ptac ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* Cylindres */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Cpu className="w-4 h-4" /> Cylindres
+                                            {cylindres && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={cylindres}
+                                            onChange={e => setCylindres(e.target.value)}
+                                            placeholder="Ex: 4"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${cylindres ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                    </div>
+
+                                    {/* Propriétaire carte grise */}
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                            <Users className="w-4 h-4" /> Propriétaire (carte grise)
+                                            {ownerNameCG && <span className="text-xs text-green-600 inline-flex items-center gap-1"><ScanLine className="w-3 h-3" /> OCR</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={ownerNameCG}
+                                            onChange={e => setOwnerNameCG(e.target.value)}
+                                            placeholder="Nom du propriétaire"
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        ${ownerNameCG ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-300'}`}
+                                        />
+                                        <p className="text-xs text-gray-400 mt-1">Information extraite de la carte grise — à titre indicatif</p>
+                                    </div>
+                                </div>
+
+
+                                {/* ── Service chauffeur ──────────────────────────────── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                                        <Users className="w-3 h-3" /> Service chauffeur
+                                    </span>
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+
+                                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center">
+                                                <Users className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <label className="font-semibold text-gray-800">Proposer un chauffeur</label>
+                                                <p className="text-xs text-gray-500">Permettez aux clients de louer votre véhicule avec chauffeur</p>
+                                            </div>
+                                        </div>
+                                        {/* Toggle switch */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setOffersDriver(!offersDriver)}
+                                            className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${offersDriver ? 'bg-amber-500' : 'bg-gray-300'}`}
+                                        >
+                                            <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${offersDriver ? 'translate-x-6' : 'translate-x-0'}`} />
+                                        </button>
+                                    </div>
+
+                                    {offersDriver && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: "auto" }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="overflow-hidden"
+                                        >
+                                            <div className="pt-3 border-t border-amber-200 mt-2">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                                            <DollarSign className="w-4 h-4 text-amber-600" />
+                                                            Tarif journalier par chauffeur <span className="text-red-500">*</span>
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">MAD</span>
+                                                            <input
+                                                                type="number"
+                                                                value={driverDailyRate}
+                                                                onChange={e => setDriverDailyRate(e.target.value)}
+                                                                placeholder="Ex: 200"
+                                                                min="0"
+                                                                step="10"
+                                                                className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                                            />
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">Prix par jour et par chauffeur (max 2 chauffeurs par réservation)</p>
+                                                    </div>
+                                                    <div className="bg-amber-100 rounded-lg p-3">
+                                                        <p className="text-xs font-medium text-amber-800 mb-1">📌 Information</p>
+                                                        <p className="text-xs text-amber-700">
+                                                            Les clients pourront choisir 1 ou 2 chauffeurs lors de leur réservation.
+                                                            Le montant total sera automatiquement calculé en fonction du nombre de jours et du nombre de chauffeurs.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </div>
+
+                                {/* ── Localisation ──────────────────────────────── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Localisation</span>
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             <MapPin className="w-4 h-4 inline mr-1" /> Ville
                                         </label>
-                                        <input type="text" placeholder="Ex: Casablanca, Rabat..." value={city} onChange={e => setCity(e.target.value)}
+                                        <input type="text" placeholder="Ex: Casablanca, Rabat..." value={city}
+                                            onChange={e => setCity(e.target.value)}
                                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            <MapPin className="w-4 h-4 inline mr-1" /> Adresse complète
+                                            <MapPin className="w-4 h-4 inline mr-1" /> Adresse de retrait
                                         </label>
-                                        <input type="text" placeholder="Adresse de retrait" value={address} onChange={e => setAddress(e.target.value)}
+                                        <input type="text" placeholder="Adresse complète" value={address}
+                                            onChange={e => setAddress(e.target.value)}
                                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                 </div>
@@ -717,9 +1048,10 @@ export default function AddVehicle() {
                                 {/* Description */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                                    <textarea placeholder="Décrivez votre véhicule, ses caractéristiques, options, etc."
+                                    <textarea placeholder="Décrivez votre véhicule, caractéristiques, options, état..."
                                         value={description} onChange={e => setDescription(e.target.value)}
-                                        rows={4} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        rows={4}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                 </div>
 
                                 {/* Info */}
@@ -730,29 +1062,27 @@ export default function AddVehicle() {
                                     <ul className="text-xs text-blue-600 space-y-1">
                                         <li>• Les champs marqués d'une * sont obligatoires</li>
                                         <li>• Vous pouvez ajouter jusqu'à 10 photos</li>
-                                        <li>• Utilisez le scanner de carte grise pour pré-remplir automatiquement</li>
-                                        <li>• Vous pourrez modifier ces informations plus tard</li>
+                                        <li>• Les champs en vert ont été pré-remplis par le scanner de carte grise</li>
+                                        <li>• Tous les champs sont modifiables même après pré-remplissage</li>
                                     </ul>
                                 </div>
 
                                 {/* Actions */}
                                 <div className="flex space-x-4 pt-4">
                                     <button onClick={handleSubmit} disabled={loading}
-                                        className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center justify-center">
-                                        {loading ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Ajout en cours...</>
-                                        ) : (
-                                            <><PlusCircle className="w-4 h-4 mr-2" /> Ajouter le véhicule</>
-                                        )}
+                                        className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center justify-center">
+                                        {loading
+                                            ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Ajout en cours...</>
+                                            : <><PlusCircle className="w-4 h-4 mr-2" /> Ajouter le véhicule</>
+                                        }
                                     </button>
                                     <button onClick={() => router.back()} disabled={loading}
-                                        className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                                        className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                                         Annuler
                                     </button>
                                 </div>
                             </div>
                         </div>
-
                         {/* Aperçu */}
                         {(brand || model || year || price) && (
                             <div className="bg-white rounded-xl shadow-sm p-6">

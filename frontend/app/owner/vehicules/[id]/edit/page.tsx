@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import imageCompression from "browser-image-compression";
@@ -13,27 +13,18 @@ import {
     ArrowLeft,
     Upload,
     X,
-    Image as ImageIcon,
-    Fuel,
-    Gauge,
-    Users,
-    Calendar,
     DollarSign,
     FileText,
     AlertCircle,
-    CheckCircle,
     Menu,
-    LayoutDashboard,
-    Calendar as CalendarIcon,
-    PlusCircle,
-    LogOut,
-    Settings,
     Bell,
+    Settings,
     Loader2,
     UploadCloud,
     Trash2,
-    Maximize2,
-    Minimize2
+    MapPin,
+    UserCheck,
+    Info
 } from "lucide-react";
 
 // Interface pour l'utilisateur
@@ -58,16 +49,25 @@ export default function EditVehiclePage() {
     const { id } = useParams();
     const router = useRouter();
 
-    // États du formulaire
-    const [brand, setBrand] = useState<string>("");
-    const [model, setModel] = useState<string>("");
-    const [year, setYear] = useState<string>("");
+    // États du formulaire (uniquement les champs modifiables)
     const [price, setPrice] = useState<string>("");
     const [description, setDescription] = useState<string>("");
-    const [fuelType, setFuelType] = useState<string>("Essence");
-    const [transmission, setTransmission] = useState<string>("Manuelle");
-    const [seats, setSeats] = useState<string>("5");
-    const [puissance, setPuissance] = useState<string>("50");
+    const [city, setCity] = useState<string>("");
+    const [address, setAddress] = useState<string>("");
+    const [offersDriver, setOffersDriver] = useState<boolean>(false);
+    const [driverDailyRate, setDriverDailyRate] = useState<string>("");
+    
+    // Informations non modifiables (affichage seulement)
+    const [vehicleInfo, setVehicleInfo] = useState<{
+        brand: string;
+        model: string;
+        year: number;
+        fuel_type: string;
+        transmission: string;
+        seats: number;
+        puissance: number;
+    } | null>(null);
+    
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
@@ -80,7 +80,6 @@ export default function EditVehiclePage() {
     const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
     const [imageError, setImageError] = useState<string | null>(null);
     const [isCompressing, setIsCompressing] = useState<boolean>(false);
-    const [imageSize, setImageSize] = useState<{ original: number; compressed: number } | null>(null);
 
     // Configuration de la compression d'image
     const compressionOptions = {
@@ -118,19 +117,29 @@ export default function EditVehiclePage() {
         // Charger les données du véhicule
         const fetchVehicle = async () => {
             try {
-                const res = await api.get(`/vehicules/${id}`);
+                const res = await api.get(`/owner/vehicules/${id}`);
                 const v = res.data;
 
-                setBrand(v.brand || "");
-                setModel(v.model || "");
-                setYear(v.year?.toString() || "");
+                // Informations non modifiables (affichage)
+                setVehicleInfo({
+                    brand: v.brand || "",
+                    model: v.model || "",
+                    year: v.year || "",
+                    fuel_type: v.fuel_type || "Essence",
+                    transmission: v.transmission || "Manuelle",
+                    seats: v.seats || 5,
+                    puissance: v.puissance || 50,
+                });
+                
+                // Informations modifiables
                 setPrice(v.price_per_day?.toString() || "");
                 setDescription(v.description || "");
-                setFuelType(v.fuel_type || "Essence");
-                setTransmission(v.transmission || "Manuelle");
-                setSeats(v.seats?.toString() || "5");
-                setPuissance(v.puissance?.toString() || "50");
-                // Ajouter l'URL complète pour chaque image
+                setCity(v.city || "");
+                setAddress(v.address || "");
+                setOffersDriver(v.offers_driver || false);
+                setDriverDailyRate(v.driver_daily_rate?.toString() || "");
+                
+                // Images
                 const imagesWithUrl = (v.images || []).map((img: any) => ({
                     ...img,
                     url: img.url || `/storage/${img.path}`
@@ -157,15 +166,12 @@ export default function EditVehiclePage() {
             const previews: string[] = [];
 
             for (const file of acceptedFiles) {
-                // Vérifier la taille
                 if (file.size > 5 * 1024 * 1024) {
                     setImageError("Certaines images dépassent 5MB");
                     continue;
                 }
 
-                // Compresser l'image
                 const compressedFile = await imageCompression(file, compressionOptions);
-
                 processedFiles.push(compressedFile);
                 previews.push(URL.createObjectURL(compressedFile));
             }
@@ -187,7 +193,7 @@ export default function EditVehiclePage() {
             'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
         },
         maxFiles: 10 - (existingImages.length + newImages.length),
-        maxSize: 5 * 1024 * 1024, // 5MB
+        maxSize: 5 * 1024 * 1024,
         onDragEnter: () => setIsDragging(true),
         onDragLeave: () => setIsDragging(false),
         onDropRejected: (fileRejections) => {
@@ -211,28 +217,25 @@ export default function EditVehiclePage() {
     };
 
     const handleDeleteNewImage = (index: number) => {
-        // Nettoyer l'URL de la preview
         URL.revokeObjectURL(newPreviews[index]);
-
         setNewImages(prev => prev.filter((_, i) => i !== index));
         setNewPreviews(prev => prev.filter((_, i) => i !== index));
     };
 
     const validateForm = (): boolean => {
-        if (!brand || !model || !year || !price) {
-            alert("Veuillez remplir tous les champs obligatoires");
-            return false;
-        }
-
-        const yearNum = parseInt(year);
-        if (isNaN(yearNum) || yearNum < 1900 || yearNum > new Date().getFullYear() + 1) {
-            alert("Année invalide");
+        if (!price) {
+            alert("Veuillez saisir le prix par jour");
             return false;
         }
 
         const priceNum = parseFloat(price);
         if (isNaN(priceNum) || priceNum <= 0) {
             alert("Prix invalide");
+            return false;
+        }
+
+        if (offersDriver && !driverDailyRate) {
+            alert("Veuillez saisir le tarif journalier pour le chauffeur");
             return false;
         }
 
@@ -245,85 +248,61 @@ export default function EditVehiclePage() {
     };
 
     const handleUpdate = async () => {
-        if (!validateForm()) return;
+    if (!validateForm()) return;
+    setSaving(true);
 
-        setSaving(true);
-        setUploadProgress(0);
-
-        // Simuler la progression
-        const progressInterval = setInterval(() => {
-            setUploadProgress(prev => {
-                if (prev >= 90) {
-                    clearInterval(progressInterval);
-                    return 90;
-                }
-                return prev + 10;
-            });
-        }, 200);
-
-        try {
-            const formData = new FormData();
-            formData.append("_method", "PUT");
-            formData.append("brand", brand);
-            formData.append("model", model);
-            formData.append("year", year);
-            formData.append("price_per_day", price);
-            formData.append("description", description);
-            formData.append("fuel_type", fuelType);
-            formData.append("transmission", transmission);
-            formData.append("seats", seats);
-            formData.append("puissance", puissance);
-
-            // Nouvelles images
-            newImages.forEach((file) => {
-                formData.append("images[]", file);
-            });
-
-            // Images supprimées
-            deletedImages.forEach((id) => {
-                formData.append("deleted_images[]", id.toString());
-            });
-
-            await api.post(`/vehicules/${id}`, formData, {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                },
-                onUploadProgress: (progressEvent) => {
-                    if (progressEvent.total) {
-                        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                        setUploadProgress(percentCompleted);
-                    }
-                },
-            });
-
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-
-            setTimeout(() => {
-                alert("✅ Véhicule modifié avec succès");
-                router.push("/owner/vehicules");
-            }, 500);
-
-        } catch (error: any) {
-            clearInterval(progressInterval);
-            console.error("Update error:", error);
-
-            if (error.response?.status === 422) {
-                const errors = error.response.data?.errors;
-                if (errors) {
-                    const messages = Object.values(errors).flat().join("\n");
-                    alert(`Erreurs de validation:\n${messages}`);
-                } else {
-                    alert("Erreur de validation");
-                }
-            } else {
-                alert("❌ Erreur lors de la modification");
-            }
-        } finally {
-            setSaving(false);
-            setTimeout(() => setUploadProgress(0), 1000);
+    try {
+        const formData = new FormData();
+        // ← _method PUT pour Laravel method spoofing
+        formData.append("_method", "PUT");
+        formData.append("price_per_day", price);
+        formData.append("description", description || "");
+        formData.append("city", city || "");
+        formData.append("address", address || "");
+        formData.append("offers_driver", offersDriver ? "1" : "0");
+        if (offersDriver && driverDailyRate) {
+            formData.append("driver_daily_rate", driverDailyRate);
         }
-    };
+
+        // ── Nouvelles images ──────────────────────────────────────────
+        newImages.forEach((file) => {
+            formData.append("images[]", file);
+        });
+
+        // ── Images supprimées ─────────────────────────────────────────
+        deletedImages.forEach((imgId) => {
+            formData.append("deleted_images[]", imgId.toString());
+        });
+
+        // ── Debug — vérifier ce qui est envoyé ───────────────────────
+        console.log("Sending formData:");
+        for (const [key, val] of formData.entries()) {
+            console.log(key, val instanceof File ? `File: ${val.name}` : val);
+        }
+
+        await api.post(`/vehicules/${id}`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            onUploadProgress: (e) => {
+                if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+            },
+        });
+
+        alert("✅ Véhicule modifié avec succès");
+        router.push("/owner/vehicules");
+
+    } catch (error: any) {
+        console.error("Update error:", error.response?.data);
+        if (error.response?.status === 422) {
+            const msgs = Object.values(error.response.data?.errors ?? {}).flat().join("\n");
+            alert(`Erreurs:\n${msgs}`);
+        } else {
+            alert("❌ Erreur lors de la modification");
+        }
+    } finally {
+        setSaving(false);
+        setUploadProgress(0);
+    }
+};
 
     const handleLogout = () => {
         localStorage.removeItem("token");
@@ -342,14 +321,11 @@ export default function EditVehiclePage() {
     const handleVehicles = () => {
         router.push("/owner/vehicules");
     };
-
-    // Formatage de la taille
-    const formatSize = (bytes: number) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const handleAddVehicules = (): void => {
+        router.push("/owner/add-vehicule");
+    };
+    const handleProfil = (): void => {
+        router.push("/owner/profile");
     };
 
     if (loading) {
@@ -366,76 +342,17 @@ export default function EditVehiclePage() {
         );
     }
 
+    const currentPath = "/owner/vehicules";
+
     return (
         <div className="min-h-screen bg-gray-50 flex">
             {/* Sidebar */}
-            <div className={`
-                fixed inset-y-0 left-0 transform 
-                ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} 
-                lg:relative lg:translate-x-0 transition duration-200 ease-in-out
-                w-64 bg-white shadow-lg z-30
-            `}>
-                <div className="h-full flex flex-col">
-                    {/* Profile Section */}
-                    <div className="p-6 border-b">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">
-                                    {user?.name?.charAt(0).toUpperCase() || "O"}
-                                </span>
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="font-semibold text-gray-800 truncate">{user?.name}</h3>
-                                <p className="text-sm text-gray-500">Propriétaire</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Navigation */}
-                    <nav className="flex-1 p-4">
-                        <div className="space-y-2">
-                            <button
-                                onClick={handleDashboard}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <LayoutDashboard className="w-5 h-5" />
-                                <span>Tableau de bord</span>
-                            </button>
-                            <button
-                                onClick={handleBookings}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <CalendarIcon className="w-5 h-5" />
-                                <span>Réservations</span>
-                            </button>
-                            <button
-                                onClick={handleVehicles}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-blue-600 bg-blue-50 rounded-lg font-medium"
-                            >
-                                <Car className="w-5 h-5" />
-                                <span>Mes véhicules</span>
-                            </button>
-                            <button
-                                onClick={() => router.push("/owner/add-vehicule")}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition duration-200"
-                            >
-                                <PlusCircle className="w-5 h-5" />
-                                <span>Ajouter véhicule</span>
-                            </button>
-                        </div>
-
-                        <div className="absolute bottom-4 left-4 right-4">
-                            <button
-                                onClick={handleLogout}
-                                className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition duration-200"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                <span>Déconnexion</span>
-                            </button>
-                        </div>
-                    </nav>
-                </div>
-            </div>
+            <Sidebar
+                user={user || undefined}
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                currentPath={currentPath}
+            />
 
             {/* Mobile sidebar backdrop */}
             {isSidebarOpen && (
@@ -485,7 +402,7 @@ export default function EditVehiclePage() {
                 {/* Main Content */}
                 <main className="p-4 sm:p-6 lg:p-8">
                     <div className="max-w-4xl mx-auto">
-                        {/* Barre de progression globale */}
+                        {/* Barre de progression */}
                         <AnimatePresence>
                             {uploadProgress > 0 && uploadProgress < 100 && (
                                 <motion.div
@@ -522,14 +439,21 @@ export default function EditVehiclePage() {
                             animate={{ opacity: 1, y: 0 }}
                             className="bg-white rounded-2xl shadow-lg overflow-hidden"
                         >
-                            {/* En-tête */}
+                            {/* En-tête avec infos non modifiables */}
                             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
                                 <h2 className="text-xl font-semibold text-white flex items-center">
                                     <Car className="w-5 h-5 mr-2" />
-                                    {brand} {model}
+                                    {vehicleInfo?.brand} {vehicleInfo?.model}
                                 </h2>
-                                <p className="text-blue-100 text-sm mt-1">
-                                    Modifiez les informations de votre véhicule
+                                <div className="flex flex-wrap gap-4 mt-2 text-blue-100 text-sm">
+                                    <span>📅 {vehicleInfo?.year}</span>
+                                    <span>⛽ {vehicleInfo?.fuel_type}</span>
+                                    <span>⚙️ {vehicleInfo?.transmission}</span>
+                                    <span>👥 {vehicleInfo?.seats} places</span>
+                                    <span>💪 {vehicleInfo?.puissance} CV</span>
+                                </div>
+                                <p className="text-blue-100 text-xs mt-2">
+                                    ⚠️ Les caractéristiques techniques (marque, modèle, année, etc.) ne sont pas modifiables car issues de la carte grise.
                                 </p>
                             </div>
 
@@ -546,8 +470,7 @@ export default function EditVehiclePage() {
                                             {/* Zone de drop */}
                                             <div
                                                 {...getRootProps()}
-                                                className={`relative transition-all duration-200 cursor-pointer ${isDragActive ? 'scale-105' : ''
-                                                    }`}
+                                                className={`relative transition-all duration-200 cursor-pointer ${isDragActive ? 'scale-105' : ''}`}
                                             >
                                                 <input {...getInputProps()} />
                                                 <div
@@ -653,154 +576,22 @@ export default function EditVehiclePage() {
                                         </div>
                                     </div>
 
-                                    {/* Colonne droite - Formulaire */}
+                                    {/* Colonne droite - Champs modifiables */}
                                     <div className="lg:col-span-2 space-y-6">
-                                        {/* Ligne 1: Marque et Modèle */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Marque <span className="text-red-500">*</span>
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={brand}
-                                                    onChange={(e) => setBrand(e.target.value)}
-                                                    placeholder="Ex: Renault, BMW..."
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    disabled={saving}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Modèle <span className="text-red-500">*</span>
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={model}
-                                                    onChange={(e) => setModel(e.target.value)}
-                                                    placeholder="Ex: Clio, Serie 3..."
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    disabled={saving}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Ligne 2: Année et Prix */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Année <span className="text-red-500">*</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <input
-                                                        type="number"
-                                                        value={year}
-                                                        onChange={(e) => setYear(e.target.value)}
-                                                        placeholder="2023"
-                                                        min="1900"
-                                                        max={new Date().getFullYear() + 1}
-                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                        disabled={saving}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Prix/jour (€) <span className="text-red-500">*</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <input
-                                                        type="number"
-                                                        value={price}
-                                                        onChange={(e) => setPrice(e.target.value)}
-                                                        placeholder="50"
-                                                        min="0"
-                                                        step="0.01"
-                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                        disabled={saving}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Ligne 3: Carburant et Transmission */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Carburant
-                                                </label>
-                                                <div className="relative">
-                                                    <Fuel className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <select
-                                                        value={fuelType}
-                                                        onChange={(e) => setFuelType(e.target.value)}
-                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                                                        disabled={saving}
-                                                    >
-                                                        <option>Essence</option>
-                                                        <option>Diesel</option>
-                                                        <option>Hybride</option>
-                                                        <option>Électrique</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Transmission
-                                                </label>
-                                                <div className="relative">
-                                                    <Gauge className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <select
-                                                        value={transmission}
-                                                        onChange={(e) => setTransmission(e.target.value)}
-                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                                                        disabled={saving}
-                                                    >
-                                                        <option>Manuelle</option>
-                                                        <option>Automatique</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Ligne 4: Places */}
+                                        {/* Prix */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Nombre de places
+                                                Prix par jour (MAD) <span className="text-red-500">*</span>
                                             </label>
                                             <div className="relative">
-                                                <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                <select
-                                                    value={seats}
-                                                    onChange={(e) => setSeats(e.target.value)}
-                                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                                                    disabled={saving}
-                                                >
-                                                    <option>2</option>
-                                                    <option>4</option>
-                                                    <option>5</option>
-                                                    <option>7</option>
-                                                    <option>8</option>
-                                                    <option>9</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Puissance
-                                            </label>
-                                            <div className="relative">
-                                                <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                                                 <input
                                                     type="number"
-                                                    value={puissance}
-                                                    onChange={(e) => setPuissance(e.target.value)}
-                                                    placeholder="50"
+                                                    value={price}
+                                                    onChange={(e) => setPrice(e.target.value)}
+                                                    placeholder="300"
                                                     min="0"
-                                                    step="20"
+                                                    step="10"
                                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                     disabled={saving}
                                                 />
@@ -825,16 +616,121 @@ export default function EditVehiclePage() {
                                             </div>
                                         </div>
 
+                                        {/* Localisation */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <h3 className="text-md font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                                <MapPin className="w-4 h-4 text-blue-600" />
+                                                Localisation
+                                            </h3>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Ville
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={city}
+                                                        onChange={(e) => setCity(e.target.value)}
+                                                        placeholder="Ex: Casablanca, Rabat..."
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                        disabled={saving}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Adresse de retrait
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={address}
+                                                        onChange={(e) => setAddress(e.target.value)}
+                                                        placeholder="Adresse complète"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                        disabled={saving}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Service chauffeur */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <h3 className="text-md font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                                <UserCheck className="w-4 h-4 text-amber-600" />
+                                                Service chauffeur
+                                            </h3>
+                                            
+                                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center">
+                                                            <UserCheck className="w-5 h-5 text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="font-semibold text-gray-800">Proposer un chauffeur</label>
+                                                            <p className="text-xs text-gray-500">Permettez aux clients de louer votre véhicule avec chauffeur</p>
+                                                        </div>
+                                                    </div>
+                                                    {/* Toggle switch */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setOffersDriver(!offersDriver)}
+                                                        className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${offersDriver ? 'bg-amber-500' : 'bg-gray-300'}`}
+                                                    >
+                                                        <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${offersDriver ? 'translate-x-6' : 'translate-x-0'}`} />
+                                                    </button>
+                                                </div>
+
+                                                {offersDriver && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: "auto" }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        className="overflow-hidden"
+                                                    >
+                                                        <div className="pt-3 border-t border-amber-200 mt-2">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                                                        <DollarSign className="w-4 h-4 text-amber-600" />
+                                                                        Tarif journalier par chauffeur <span className="text-red-500">*</span>
+                                                                    </label>
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">MAD</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            value={driverDailyRate}
+                                                                            onChange={e => setDriverDailyRate(e.target.value)}
+                                                                            placeholder="Ex: 200"
+                                                                            min="0"
+                                                                            step="10"
+                                                                            className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                                                            disabled={saving}
+                                                                        />
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400 mt-1">Prix par jour et par chauffeur (max 2)</p>
+                                                                </div>
+                                                                <div className="bg-amber-100 rounded-lg p-3">
+                                                                    <p className="text-xs font-medium text-amber-800 mb-1">📌 Information</p>
+                                                                    <p className="text-xs text-amber-700">
+                                                                        Les clients pourront choisir 1 ou 2 chauffeurs. Le tarif sera multiplié par le nombre de jours et le nombre de chauffeurs.
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                        </div>
+
                                         {/* Info supplémentaire */}
                                         <div className="bg-blue-50 rounded-lg p-4 flex items-start">
-                                            <AlertCircle className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
+                                            <Info className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
                                             <div>
                                                 <p className="text-sm text-blue-800 font-medium">
                                                     Informations importantes
                                                 </p>
                                                 <p className="text-xs text-blue-600 mt-1">
-                                                    Les champs marqués d'un * sont obligatoires.
-                                                    Les images sont automatiquement compressées et optimisées.
+                                                    Seuls les champs ci-dessus sont modifiables. Les caractéristiques techniques sont issues de la carte grise et ne peuvent pas être modifiées.
                                                 </p>
                                             </div>
                                         </div>

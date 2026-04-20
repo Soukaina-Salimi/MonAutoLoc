@@ -9,15 +9,14 @@ import { Mail, Lock, LogIn, UserPlus, Car, Eye, EyeOff } from "lucide-react";
 
 // Interface pour la réponse de login
 interface LoginResponse {
-    access_token: string;
+    token: string;       // ← était access_token
     user: {
         id: number;
         name: string;
         email: string;
-        role: {
-            id: number;
-            name: string;
-        };
+        profile_completed: boolean;  // ← ajouter
+        role: { id: number; name: string };
+        owner_services?: { service_type: string }[];  // ← ajouter
     };
 }
 
@@ -38,22 +37,19 @@ export default function LoginPage() {
         if (token && userStr) {
             try {
                 const user = JSON.parse(userStr);
-                redirectBasedOnRole(user.role.name);
+                redirectBasedOnRole(user.role.name, user.profile_completed);
             } catch (error) {
                 console.error("Error parsing user:", error);
             }
         }
     }, []);
 
-    const redirectBasedOnRole = (role: string) => {
-        if (role === "admin") {
-            router.push("/admin/dashboard");
-        } else if (role === "owner") {
-            router.push("/owner/dashboard");
-        } else {
-            router.push("/");
-        }
-    };
+   const redirectBasedOnRole = (role: string, profileCompleted: boolean) => {
+    if (role === "admin") { router.push("/admin/dashboard"); return; }
+    if (!profileCompleted) { router.push("/complete-profile"); return; }
+    if (role === "owner") { router.push("/owner/dashboard"); return; }
+    router.push("/");
+};
 
     const handleRegister = () => {
         router.push("/register");
@@ -80,10 +76,10 @@ export default function LoginPage() {
                 password,
             });
 
-            const { access_token, user } = res.data;
+            const {token, user } = res.data;
 
             // Stocker les informations
-            localStorage.setItem("token", access_token);
+            localStorage.setItem("token", token);
             localStorage.setItem("user", JSON.stringify(user));
 
             // Stocker l'email si "Se souvenir de moi" est coché
@@ -96,7 +92,7 @@ export default function LoginPage() {
             console.log("Login success:", res.data);
 
             // Rediriger en fonction du rôle
-            redirectBasedOnRole(user.role.name);
+            redirectBasedOnRole(user.role.name, user.profile_completed);
 
         } catch (error: any) {
             console.error("Login error:", error);
