@@ -180,6 +180,26 @@ services:
       - plateforme-network
     restart: unless-stopped
 
+  agent-orchestrator:
+    build: ./agent-orchestrator
+    container_name: agent-orchestrator
+    ports:
+      - "8006:8006"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - VEHICLE_SERVICE_URL=http://vehicle-service
+      - AUTH_SERVICE_URL=http://auth-service
+      - BOOKING_SERVICE_URL=http://booking-service
+    volumes:
+      - ./agent-orchestrator:/app
+    depends_on:
+      - vehicle-service
+      - auth-service
+      - booking-service
+    networks:
+      - plateforme-network
+    restart: unless-stopped
   # ── NGINX (API GATEWAY) ───────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -194,6 +214,7 @@ services:
       - booking-service
       - review-service
       - ocr-service
+      - agent-orchestrator
     networks:
       - plateforme-network
     restart: unless-stopped

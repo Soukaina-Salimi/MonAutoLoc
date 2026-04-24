@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\UserController;
@@ -78,7 +77,6 @@ Route::get('/service-owners/{id}', [OwnerServiceController::class, 'show']);  //
 // Vérifier si un owner a un service actif (appelé par vehicle-service)
 Route::get('/users/{id}/services', [OwnerServiceController::class, 'userServices']);
 
-Route::post('/chatbot/message', [ChatbotController::class, 'message']);
 
 
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {

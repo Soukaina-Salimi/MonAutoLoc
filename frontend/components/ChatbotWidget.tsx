@@ -146,7 +146,7 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
         content: m.content,
       }));
 
-      const { data } = await api.post("/chatbot/message", {
+      const { data } = await api.post("/agent/chat", {
         message: msg,
         history,
         context: context || { page: "general" }, // ← ajouter
