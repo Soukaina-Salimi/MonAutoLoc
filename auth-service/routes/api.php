@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChatLogController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\UserController;
@@ -60,6 +61,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Demandes de services (owner) ──────────────────────────────────────
     Route::get('/service-requests',                    [ServiceRequestController::class, 'ownerRequests']);
     Route::patch('/service-requests/{id}/status',      [ServiceRequestController::class, 'updateStatus']);
+
+    // Feedback utilisateur sur un message
+    Route::patch('/chat-logs/{id}/feedback', [ChatLogController::class, 'feedback']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -77,9 +81,11 @@ Route::get('/service-owners/{id}', [OwnerServiceController::class, 'show']);  //
 // Vérifier si un owner a un service actif (appelé par vehicle-service)
 Route::get('/users/{id}/services', [OwnerServiceController::class, 'userServices']);
 
+Route::post('/internal/chat-logs', [ChatLogController::class, 'store']);
 
 
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::get('/admin/customizations',            [ServiceCustomizationController::class, 'adminIndex']);
     Route::patch('/admin/customizations/{id}',     [ServiceCustomizationController::class, 'adminUpdate']);
+    Route::get('/admin/chat-analytics', [ChatLogController::class, 'analytics']);
 });

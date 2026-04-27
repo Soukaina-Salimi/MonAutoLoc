@@ -23,6 +23,7 @@ interface Message {
   content: string;
   suggestions?: Suggestion[];
   timestamp: Date;
+  logId?: number | null; // ← ajouter
 }
 
 interface ChatbotContext {
@@ -49,6 +50,12 @@ interface Suggestion {
   url: string;
   type: "vehicules" | "service";
 }
+// Utilisateur connecté (à récupérer depuis le contexte ou localStorage)
+interface CurrentUser {
+  id: number;
+  name: string;
+  email: string;
+}
 
 const SUGGESTED_QUESTIONS = [
   "Quels véhicules sont disponibles à Casablanca ?",
@@ -65,8 +72,33 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
   const [loading, setLoading] = useState(false);
   const [hasNewMsg, setHasNewMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
+  const [lastLogId, setLastLogId] = useState<number | null>(null);
+  // Ajouter au début du composant
+  const [sessionId, setSessionId] = useState<string>(() => {
+    // Récupérer ou générer un session_id persistant
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("chatbot_session");
+      if (stored) return stored;
+      const newId = crypto.randomUUID();
+      sessionStorage.setItem("chatbot_session", newId);
+      return newId;
+    }
+    return "";
+  });
+  // Récupérer l'utilisateur connecté
+  useEffect(() => {
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setCurrentUser({ id: user.id, name: user.name, email: user.email });
+      }
+    } catch (error) {
+      console.error("Error getting current user:", error);
+    }
+  }, []);
   // Message de bienvenue
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -136,6 +168,7 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
       content: msg,
       timestamp: new Date(),
     };
+
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
@@ -149,7 +182,9 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
       const { data } = await api.post("/agent/chat", {
         message: msg,
         history,
-        context: context || { page: "general" }, // ← ajouter
+        context: context || { page: "general" },
+        session_id: sessionId,
+        user_id: currentUser?.id || null, // si connecté
       });
 
       const botMsg: Message = {
@@ -157,8 +192,10 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
         content: data.response,
         suggestions: data.suggestions || [],
         timestamp: new Date(),
+        logId: data.log_id || null, // ← stocker le log_id par message
       };
       setMessages((prev) => [...prev, botMsg]);
+      setLastLogId(data.log_id || null); // ← assigner lastLogId
 
       if (!isOpen || minimized) setHasNewMsg(true);
     } catch {
@@ -188,6 +225,15 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
     setHasNewMsg(false);
   }
 
+  // Hors de sendMessage — au niveau du composant
+  async function sendFeedback(logId: number, helpful: boolean) {
+    if (!logId) return;
+    try {
+      await api.patch(`/chat-logs/${logId}/feedback`, {
+        was_helpful: helpful,
+      });
+    } catch {}
+  }
   const serviceColors: Record<string, string> = {
     vehicules: "bg-blue-100 text-blue-700 hover:bg-blue-200",
     service: "bg-teal-100 text-teal-700 hover:bg-teal-200",
@@ -318,6 +364,22 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
                             ))}
                           </div>
                         )}
+                        {msg.role === "assistant" && i > 0 && msg.logId && (
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              onClick={() => sendFeedback(msg.logId!, true)}
+                              className="text-xs text-gray-400 hover:text-green-500 transition"
+                            >
+                              👍
+                            </button>
+                            <button
+                              onClick={() => sendFeedback(msg.logId!, false)}
+                              className="text-xs text-gray-400 hover:text-red-500 transition"
+                            >
+                              👎
+                            </button>
+                          </div>
+                        )}
 
                         {/* Timestamp */}
                         <span className="text-xs text-gray-400">
@@ -393,6 +455,7 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
                       disabled={loading}
                       className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none disabled:opacity-50"
                     />
+
                     <button
                       onClick={() => sendMessage()}
                       disabled={!input.trim() || loading}
