@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
+import SocialAccountsSetup from "@/components/SocialAccountsSetup";
 
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -84,7 +85,8 @@ type Tab =
   | "security"
   | "activity"
   | "agency"
-  | "documents";
+  | "documents"
+  | "social";
 
 // ─── Document card ────────────────────────────────────────────────────────────
 function DocCard({
@@ -451,6 +453,7 @@ export default function OwnerProfilePage() {
     { id: "activity", label: "Activité" },
     { id: "agency", label: "Mon agence" },
     { id: "documents", label: "Documents" },
+    { id: "social", label: "Réseaux sociaux" }, // ← ajouter
   ];
 
   return (
@@ -1455,6 +1458,46 @@ export default function OwnerProfilePage() {
                   },
                 ]}
               />
+            </motion.div>
+          )}
+          {/* ── TAB RÉSEAUX SOCIAUX ──────────────────────────────────────── */}
+          {tab === "social" && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-2xl mx-auto space-y-6"
+            >
+              {/* Header */}
+              <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
+                    <svg
+                      className="w-5 h-5 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">
+                      Réseaux sociaux
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Connectez vos pages pour publier automatiquement vos
+                      annonces
+                    </p>
+                  </div>
+                  <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                    Premium IA
+                  </span>
+                </div>
+              </div>
+
+              {/* Composant de connexion */}
+              <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+                <SocialAccountsSetup />
+              </div>
             </motion.div>
           )}
         </main>

@@ -482,4 +482,121 @@ class BookingController extends Controller
 
         return response()->json(array_values(array_unique($dates)));
     }
+
+    // ── GET /api/bookings/stats/{ownerId} ─────────────────────────────────
+    public function getStats(Request $request, int $ownerId)
+    {
+        try {
+            // Récupérer les IDs des véhicules de l'owner
+            $vehiculesRes = Http::timeout(10)->get(
+                env('VEHICLE_SERVICE_URL', 'http://vehicle-service') . "/api/vehicules"
+            );
+
+            if ($vehiculesRes->failed()) {
+                return response()->json([
+                    'total_earnings' => 0,
+                    'total_bookings' => 0,
+                    'revenue_this_month' => 0,
+                    'bookings_this_month' => 0
+                ]);
+            }
+
+            $vehiculeIds = collect($vehiculesRes->json())
+                ->filter(fn($v) => ($v['user_id'] ?? null) === $ownerId)
+                ->pluck('id')
+                ->toArray();
+
+            if (empty($vehiculeIds)) {
+                return response()->json([
+                    'total_earnings' => 0,
+                    'total_bookings' => 0,
+                    'revenue_this_month' => 0,
+                    'bookings_this_month' => 0
+                ]);
+            }
+
+            // Total des réservations
+            $totalBookings = Booking::whereIn('vehicule_id', $vehiculeIds)->count();
+
+            // Total des gains (réservations complétées)
+            $totalEarnings = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->where('status', 'completed')
+                ->sum('total_price');
+
+            // Ce mois-ci
+            $monthStart = now()->startOfMonth();
+            $bookingsThisMonth = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->where('created_at', '>=', $monthStart)
+                ->count();
+
+            $revenueThisMonth = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->where('status', 'completed')
+                ->where('created_at', '>=', $monthStart)
+                ->sum('total_price');
+
+            return response()->json([
+                'total_earnings' => (float) $totalEarnings,
+                'total_bookings' => $totalBookings,
+                'revenue_this_month' => (float) $revenueThisMonth,
+                'bookings_this_month' => $bookingsThisMonth
+            ]);
+        } catch (\Exception $e) {
+            Log::error('getStats error: ' . $e->getMessage());
+            return response()->json([
+                'total_earnings' => 0,
+                'total_bookings' => 0,
+                'revenue_this_month' => 0,
+                'bookings_this_month' => 0
+            ]);
+        }
+    }
+
+    // ── POST /api/bookings/by-vehicules ─────────────────────────────────
+    public function getBookingsByVehicules(Request $request)
+    {
+        try {
+            $vehiculeIds = $request->input('vehicule_ids', []);
+            $limit = $request->input('limit', 5);
+
+            if (empty($vehiculeIds)) {
+                return response()->json([]);
+            }
+
+            $bookings = Booking::with('contract')
+                ->whereIn('vehicule_id', $vehiculeIds)
+                ->latest()
+                ->limit($limit)
+                ->get();
+
+            $result = [];
+            foreach ($bookings as $booking) {
+                $clientInfo = $this->fetchUserInfo($booking->user_id);
+                $vehicule = $this->getVehicule($booking->vehicule_id);
+
+                $result[] = [
+                    'id' => $booking->id,
+                    'vehicule_id' => $booking->vehicule_id,
+                    'start_date' => $booking->start_date,
+                    'end_date' => $booking->end_date,
+                    'total_price' => $booking->total_price,
+                    'status' => $booking->status,
+                    'created_at' => $booking->created_at,
+                    'client' => [
+                        'id' => $booking->user_id,
+                        'name' => $clientInfo['name'] ?? 'Client #' . $booking->user_id,
+                        'email' => $clientInfo['email'] ?? '',
+                    ],
+                    'user' => [
+                        'name' => $clientInfo['name'] ?? 'Client #' . $booking->user_id,
+                    ],
+                    'vehicle_name' => $vehicule ? ($vehicule['brand'] . ' ' . $vehicule['model']) : 'Véhicule',
+                ];
+            }
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('getBookingsByVehicules error: ' . $e->getMessage());
+            return response()->json([]);
+        }
+    }
 }

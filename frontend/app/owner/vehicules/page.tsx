@@ -68,7 +68,8 @@ export default function Vehicles() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage] = useState<number>(6);
   const currentPath = "/owner/vehicules";
-
+  const [openMarketing, setOpenMarketing] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   useEffect(() => {
     const userData = localStorage.getItem("user");
     const token = localStorage.getItem("token");
@@ -204,6 +205,25 @@ export default function Vehicles() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {openMarketing && selectedVehicle && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={() => setOpenMarketing(false)}
+                className="bg-white px-3 py-1 rounded-lg"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <MarketingPublisher
+              vehicle={selectedVehicle}
+              ownerId={user?.id ?? 0}
+            />
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <Sidebar
         user={user || undefined}
@@ -432,10 +452,15 @@ export default function Vehicles() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <MarketingPublisher
-                          vehicle={vehicle}
-                          ownerId={user?.id ?? 0}
-                        />
+                        <button
+                          onClick={() => {
+                            setSelectedVehicle(vehicle);
+                            setOpenMarketing(true);
+                          }}
+                          className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm"
+                        >
+                          Marketing IA
+                        </button>
                       </div>
                     </div>
                   </div>

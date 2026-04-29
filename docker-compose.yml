@@ -259,6 +259,7 @@ services:
       - review-service
       - ocr-service
       - agent-orchestrator
+      - marketing-orchestrator
     networks:
       - plateforme-network
     restart: unless-stopped

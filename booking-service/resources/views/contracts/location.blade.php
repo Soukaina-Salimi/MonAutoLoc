@@ -1,4 +1,3 @@
-{{-- booking-service/resources/views/contracts/location.blade.php --}}
 <!DOCTYPE html>
 <html lang="fr">
 
@@ -23,9 +22,10 @@
 
         /* ── En-tête ── */
         .header {
-            background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+            background: #1e3a5f;
+            /* compatible DomPDF */
             color: white;
-            padding: 28px 36px;
+            padding: 14px 24px;
             position: relative;
         }
 
@@ -68,9 +68,11 @@
         }
 
         .header-title {
-            margin-top: 18px;
+            margin-top: 10px;
+            /* avant: 18px */
             border-top: 1px solid rgba(255, 255, 255, 0.3);
-            padding-top: 14px;
+            padding-top: 8px;
+            /* avant: 14px */
             font-size: 13px;
             font-weight: 600;
             letter-spacing: 2px;
@@ -79,8 +81,10 @@
         }
 
         /* ── Body ── */
+
         .content {
-            padding: 24px 36px;
+            padding: 18px 36px;
+            /* avant: 24px 36px */
         }
 
         /* ── Section ── */
@@ -352,7 +356,10 @@
                 {{-- Logo de l'agence en base64 --}}
                 @if($is_agency && !empty($agency_logo_base64))
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <img src="{{ $agency_logo_base64 }}" alt="Logo" style="height: 50px; width: auto; max-width: 120px; object-fit: contain;">
+
+                    <img src="{{ $agency_logo_base64 }}"
+                        alt="Logo"
+                        style="height: 68px; width: auto; max-width: 160px; object-fit: contain;">
                     <div>
                         <h1>{{ $agency_name }}</h1>
                         @if($agency_rc)

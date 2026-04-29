@@ -4,7 +4,6 @@ import httpx
 import os
 from agents import content_agent, publish_agent
 
-
 async def process_marketing_campaign(
     owner_id:        int,
     vehicule_id:     int,
@@ -17,16 +16,24 @@ async def process_marketing_campaign(
     3. PublishAgent → publier sur les plateformes
     4. Retourner le résumé
     """
-
-    # ── Étape 1 : Récupérer le véhicule ──────────────────────────────────
     vehicle_data = await _fetch_vehicle(vehicule_id)
     if not vehicle_data:
         return {"success": False, "error": "Véhicule introuvable"}
 
-    # ── Étape 2 : Générer le contenu ──────────────────────────────────────
-    contents = await content_agent.run(vehicle_data, campaign_config)
+    custom_contents = campaign_config.get("custom_contents")
 
-    # ── Étape 3 : Publier ─────────────────────────────────────────────────
+    # Si l'owner a édité le contenu dans le preview → l'utiliser directement
+    if custom_contents:
+        contents = {
+            "contents": {
+                platform: {"content": text}
+                for platform, text in custom_contents.items()
+            }
+        }
+    else:
+        # Sinon générer via ContentAgent
+        contents = await content_agent.run(vehicle_data, campaign_config)
+
     publish_result = await publish_agent.run(
         contents         = contents,
         vehicle_data     = vehicle_data,
@@ -34,7 +41,6 @@ async def process_marketing_campaign(
         campaign_config  = campaign_config,
     )
 
-    # ── Résumé ────────────────────────────────────────────────────────────
     successful = [p for p in publish_result["published"] if p.get("success")]
     failed     = [p for p in publish_result["published"] if not p.get("success")]
 
@@ -52,13 +58,13 @@ async def process_marketing_campaign(
 
 
 async def _fetch_vehicle(vehicule_id: int) -> dict | None:
+    """Helper local — même logique que dans main.py."""
     VEHICLE_SERVICE_URL = os.getenv("VEHICLE_SERVICE_URL", "http://vehicle-service")
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{VEHICLE_SERVICE_URL}/api/vehicules/{vehicule_id}")
         if resp.status_code == 200:
             v = resp.json()
-            # Sanitize — pas de données sensibles
             return {
                 "id":               v.get("id"),
                 "brand":            v.get("brand"),
@@ -74,5 +80,6 @@ async def _fetch_vehicle(vehicule_id: int) -> dict | None:
                 "driver_daily_rate":v.get("driver_daily_rate"),
                 "image_url":        v.get("image_url"),
             }
+        return None
     except Exception:
         return None

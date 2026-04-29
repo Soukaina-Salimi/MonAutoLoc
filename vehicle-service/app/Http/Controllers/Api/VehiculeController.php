@@ -406,4 +406,151 @@ class VehiculeController extends Controller
             'user'             => $owner,
         ];
     }
+
+    // vehicle-service/app/Http/Controllers/Api/VehiculeController.php
+
+    // ── GET /api/owner/stats ──────────────────────────────────────────
+    public function stats(Request $request)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+
+            // Récupérer les véhicules de l'owner
+            $vehicules = Vehicule::where('user_id', $user->id)->get();
+            $totalVehicles = $vehicules->count();
+            $newVehiclesThisMonth = Vehicule::where('user_id', $user->id)
+                ->where('created_at', '>=', now()->startOfMonth())
+                ->count();
+
+            // Appel à booking-service pour les stats de réservations
+            $bookingsStats = $this->getBookingsStats($user->id);
+
+            // Appel à auth-service pour les stats de services
+            $servicesStats = $this->getServicesStats($user->id);
+
+            return response()->json([
+                'total_earnings' => $bookingsStats['total_earnings'] ?? 0,
+                'total_bookings' => $bookingsStats['total_bookings'] ?? 0,
+                'total_vehicles' => $totalVehicles,
+                'total_service_requests' => $servicesStats['total'] ?? 0,
+                'pending_service_requests' => $servicesStats['pending'] ?? 0,
+                'confirmed_service_requests' => $servicesStats['confirmed'] ?? 0,
+                'completed_service_requests' => $servicesStats['completed'] ?? 0,
+                'revenue_this_month' => $bookingsStats['revenue_this_month'] ?? 0,
+                'bookings_this_month' => $bookingsStats['bookings_this_month'] ?? 0,
+                'vehicles_this_month' => $newVehiclesThisMonth,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stats error: ' . $e->getMessage());
+            return response()->json(['message' => 'Erreur'], 500);
+        }
+    }
+
+    // ── GET /api/owner/recent-bookings ─────────────────────────────────
+    public function recentBookings(Request $request)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+
+            // Récupérer les IDs des véhicules de l'owner
+            $vehiculeIds = Vehicule::where('user_id', $user->id)->pluck('id')->toArray();
+
+            if (empty($vehiculeIds)) {
+                return response()->json([]);
+            }
+
+            // Appel à booking-service pour les réservations récentes
+            $limit = $request->query('limit', 5);
+
+            $response = Http::timeout(5)->post(
+                env('BOOKING_SERVICE_URL', 'http://booking-service') . '/api/bookings/by-vehicules',
+                [
+                    'vehicule_ids' => $vehiculeIds,
+                    'limit' => $limit
+                ]
+            );
+
+            if (!$response->successful()) {
+                return response()->json([]);
+            }
+
+            $bookings = $response->json();
+
+            // Enrichir avec les noms des véhicules
+            $vehiculesMap = Vehicule::whereIn('id', $vehiculeIds)
+                ->get()
+                ->keyBy('id')
+                ->map(fn($v) => "{$v->brand} {$v->model}")
+                ->toArray();
+
+            $result = array_map(function ($booking) use ($vehiculesMap) {
+                return [
+                    'id' => $booking['id'],
+                    'client_name' => $booking['client']['name'] ?? $booking['user']['name'] ?? 'Client',
+                    'vehicle_name' => $vehiculesMap[$booking['vehicule_id']] ?? 'Véhicule',
+                    'start_date' => $booking['start_date'],
+                    'end_date' => $booking['end_date'],
+                    'total_price' => $booking['total_price'],
+                    'status' => $booking['status'],
+                ];
+            }, $bookings);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('RecentBookings error: ' . $e->getMessage());
+            return response()->json([]);
+        }
+    }
+
+    // ── Helper pour les stats des réservations ─────────────────────────
+    private function getBookingsStats(int $ownerId): array
+    {
+        try {
+            $response = Http::timeout(5)->get(
+                env('BOOKING_SERVICE_URL', 'http://booking-service') . "/api/bookings/stats/{$ownerId}"
+            );
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+        } catch (\Exception $e) {
+            Log::warning('getBookingsStats error: ' . $e->getMessage());
+        }
+
+        return [
+            'total_earnings' => 0,
+            'total_bookings' => 0,
+            'revenue_this_month' => 0,
+            'bookings_this_month' => 0
+        ];
+    }
+
+    // ── Helper pour les stats des services ────────────────────────────
+    private function getServicesStats(int $ownerId): array
+    {
+        try {
+            $response = Http::timeout(5)->get(
+                env('AUTH_SERVICE_URL', 'http://auth-service') . "/api/service-requests/stats/{$ownerId}"
+            );
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+        } catch (\Exception $e) {
+            Log::warning('getServicesStats error: ' . $e->getMessage());
+        }
+
+        return [
+            'total' => 0,
+            'pending' => 0,
+            'confirmed' => 0,
+            'completed' => 0
+        ];
+    }
 }

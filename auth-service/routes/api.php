@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatLogController;
@@ -9,6 +10,8 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\OwnerServiceController;
 use App\Http\Controllers\Api\ServiceCustomizationController;
 use App\Http\Controllers\Api\ServiceRequestController;
+use App\Http\Controllers\Api\SocialAccountController;
+use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SubscriptionController;
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -17,7 +20,18 @@ use App\Http\Controllers\Api\SubscriptionController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login',    [AuthController::class, 'login']);
-
+// OAuth flows — sans auth sanctum (redirect browser)
+Route::get('/social/facebook/connect',  [SocialAuthController::class, 'facebookConnect'])
+    ->middleware('auth:sanctum');
+Route::get('/social/facebook/callback', [SocialAuthController::class, 'facebookCallback']);
+Route::get(
+    '/internal/social-accounts/{userId}/{platform}',
+    [SocialAccountController::class, 'getForAgent']
+);
+Route::post(
+    '/internal/marketing-campaigns',
+    [SocialAccountController::class, 'saveCampaign']
+);
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES PROTÉGÉES — token Sanctum requis
 // ══════════════════════════════════════════════════════════════════════════════
@@ -64,6 +78,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Feedback utilisateur sur un message
     Route::patch('/chat-logs/{id}/feedback', [ChatLogController::class, 'feedback']);
+
+    Route::get('/social/facebook/status',         [SocialAuthController::class, 'status']);
+    Route::delete('/social/{platform}/disconnect', [SocialAuthController::class, 'disconnect']);
+
+    // Comptes sociaux owner
+    Route::get('/social-accounts',                  [SocialAccountController::class, 'index']);
+    Route::post('/social-accounts',                 [SocialAccountController::class, 'store']);
+    Route::delete('/social-accounts/{platform}',    [SocialAccountController::class, 'destroy']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -84,8 +106,33 @@ Route::get('/users/{id}/services', [OwnerServiceController::class, 'userServices
 Route::post('/internal/chat-logs', [ChatLogController::class, 'store']);
 
 
+// Dans le groupe middleware admin
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
-    Route::get('/admin/customizations',            [ServiceCustomizationController::class, 'adminIndex']);
-    Route::patch('/admin/customizations/{id}',     [ServiceCustomizationController::class, 'adminUpdate']);
-    Route::get('/admin/chat-analytics', [ChatLogController::class, 'analytics']);
+
+    // Stats globales
+    Route::get('/admin/stats',                    [AdminController::class, 'stats']);
+
+    // Utilisateurs
+    Route::get('/admin/users',                    [AdminController::class, 'users']);
+    Route::patch('/admin/users/{id}/toggle',      [AdminController::class, 'toggleUser']);
+
+    // Documents
+    Route::get('/admin/documents',                [AdminController::class, 'documents']);
+    Route::patch('/admin/documents/{id}/verify',  [AdminController::class, 'verifyDocument']);
+    Route::patch('/admin/documents/{id}/reject',  [AdminController::class, 'rejectDocument']);
+
+    // Abonnements
+    Route::get('/admin/subscriptions',                       [AdminController::class, 'subscriptions']);
+    Route::patch('/admin/subscriptions/{id}/activate',       [AdminController::class, 'activateSubscription']);
+    Route::patch('/admin/subscriptions/{id}/reject',         [AdminController::class, 'rejectSubscription']);
+
+    // Customisations
+    Route::get('/admin/customizations',           [AdminController::class, 'customizations']);
+    Route::patch('/admin/customizations/{id}',    [AdminController::class, 'updateCustomization']);
+
+    // Analytics
+    Route::get('/admin/chat-analytics',           [AdminController::class, 'chatAnalytics']);
+
+    // Campagnes marketing
+    Route::get('/admin/campaigns',                [AdminController::class, 'campaigns']);
 });

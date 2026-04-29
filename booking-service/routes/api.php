@@ -35,6 +35,9 @@ Route::middleware('auth.service')->group(function () {
 
     // ── Détail d'une réservation — EN DERNIER avec {id} ──────────────────
     Route::get('/bookings/{id}',          [BookingController::class, 'show']);
+
+    Route::get('/bookings/stats/{ownerId}', [BookingController::class, 'getStats']);
+    Route::post('/bookings/by-vehicules', [BookingController::class, 'getBookingsByVehicules']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

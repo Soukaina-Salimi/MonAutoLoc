@@ -16,7 +16,7 @@ Route::get('/vehicules/{id}', [VehiculeController::class, 'show']);
 
 // Liste des propriétaires avec leurs véhicules (page /owners)
 Route::get('/owners',     [OwnerController::class, 'index']);
-Route::get('/owners/{id}',[OwnerController::class, 'show']);
+Route::get('/owners/{id}', [OwnerController::class, 'show']);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES PROTÉGÉES — middleware auth.service (valide token via auth-service)
@@ -31,7 +31,7 @@ Route::middleware('auth.service')->group(function () {
 
     // Upload images d'un véhicule
     Route::post('/vehicules/{id}/images',          [VehiculeController::class, 'uploadImages']);
-    Route::delete('/vehicules/{id}/images/{imgId}',[VehiculeController::class, 'deleteImage']);
+    Route::delete('/vehicules/{id}/images/{imgId}', [VehiculeController::class, 'deleteImage']);
 
     // Véhicules de l'owner connecté
     Route::get('/owner/vehicules', [VehiculeController::class, 'ownerVehicules']);
@@ -39,6 +39,9 @@ Route::middleware('auth.service')->group(function () {
 
     // Changer le statut d'un véhicule (available / unavailable / maintenance)
     Route::patch('/vehicules/{id}/status', [VehiculeController::class, 'updateStatus']);
+
+    Route::get('/owner/stats', [VehiculeController::class, 'stats']);
+    Route::get('/owner/recent-bookings', [VehiculeController::class, 'recentBookings']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
