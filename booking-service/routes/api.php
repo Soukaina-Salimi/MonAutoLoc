@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ContractController;
+use App\Http\Controllers\Api\OwnerController;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES OPTIONS — répondre sans auth (preflight CORS)
@@ -38,11 +39,16 @@ Route::middleware('auth.service')->group(function () {
 
     Route::get('/bookings/stats/{ownerId}', [BookingController::class, 'getStats']);
     Route::post('/bookings/by-vehicules', [BookingController::class, 'getBookingsByVehicules']);
+
+    Route::get('/owner/booking-stats', [OwnerController::class, 'bookingStats']);
+    Route::get('/owner/recent-bookings', [OwnerController::class, 'recentBookings']);
+    Route::get('/owner/revenue-chart', [OwnerController::class, 'revenueChart']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES INTERNES — appelées par vehicle-service (sans auth)
 // ══════════════════════════════════════════════════════════════════════════════
+Route::get('/internal/demand-history', [BookingController::class, 'demandHistory']);
 
 Route::get('/vehicules/{id}/active-bookings', [BookingController::class, 'activeBookings']);
 Route::get('/vehicules/{id}/booked-dates',    [BookingController::class, 'bookedDates']);

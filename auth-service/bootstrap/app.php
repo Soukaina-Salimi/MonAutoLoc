@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.service' => \App\Http\Middleware\VerifyTokenWithAuthService::class,
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
+            'premium' => \App\Http\Middleware\CheckPremiumFeature::class,
+
         ]);
     })
     ->withExceptions(function ($exceptions) {

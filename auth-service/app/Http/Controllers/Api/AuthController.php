@@ -9,6 +9,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ResetPasswordMail;
 
 class AuthController extends Controller
 {
@@ -50,7 +55,6 @@ class AuthController extends Controller
                 'token' => $token,
                 'user'  => $this->formatUser($user->load('role', 'ownerServices')),
             ], 201);
-
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
@@ -87,7 +91,6 @@ class AuthController extends Controller
                 'token' => $token,
                 'user'  => $this->formatUser($user),
             ]);
-
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
@@ -120,6 +123,81 @@ class AuthController extends Controller
         }
     }
 
+
+    // ── POST /api/forgot-password ──────────────────────────────────────────────
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        // Générer un token manuellement
+        $token = Str::random(60);
+
+        // Stocker dans password_reset_tokens
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $user->email],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        // Envoyer l'email avec le token
+        $resetUrl = env('FRONTEND_URL', 'http://localhost:3000') . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
+
+        // Utiliser Mail directement (sans Password::sendResetLink)
+        Mail::to($user->email)->send(new ResetPasswordMail($token, $user->email));
+
+        return response()->json([
+            'message' => 'Un lien de réinitialisation a été envoyé à votre adresse email.',
+        ], 200);
+    }
+
+    // ── POST /api/reset-password ───────────────────────────────────────────────
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required',
+            'email' => 'required|email|exists:users,email',
+            'password' => 'required|min:8|confirmed',
+        ]);
+
+        // Vérifier le token
+        $reset = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$reset || !Hash::check($request->token, $reset->token)) {
+            return response()->json([
+                'message' => 'Token invalide ou expiré.',
+            ], 400);
+        }
+
+        // Vérifier si le token n'a pas expiré (60 minutes)
+        if (now()->diffInMinutes($reset->created_at) > 60) {
+            return response()->json([
+                'message' => 'Le lien a expiré. Veuillez renvoyer une demande.',
+            ], 400);
+        }
+
+        // Mettre à jour le mot de passe
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Supprimer le token
+        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+        return response()->json([
+            'message' => 'Mot de passe réinitialisé avec succès.',
+        ], 200);
+    }
+
+
+
     // ── Helper ────────────────────────────────────────────────────────────
     private function formatUser(User $user): array
     {
@@ -145,7 +223,7 @@ class AuthController extends Controller
             'agency_logo_url'   => $user->agency_logo
                 ? asset('storage/' . $user->agency_logo)
                 : null,
-            'agency_description'=> $user->agency_description,
+            'agency_description' => $user->agency_description,
             'agency_rc'         => $user->agency_rc,
             'agency_phone'      => $user->agency_phone,
             'agency_website'    => $user->agency_website,

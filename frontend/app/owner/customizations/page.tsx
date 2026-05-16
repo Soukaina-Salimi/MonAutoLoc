@@ -97,31 +97,13 @@ const CUSTOMIZATION_OPTIONS = [
     category: "ia",
   },
   {
-    id: "zone_exclusive",
-    label: "Zone d'intervention exclusive",
-    icon: MapPin,
-    color: "text-rose-600",
-    bg: "bg-rose-50",
-    desc: "Demandez à être le prestataire exclusif sur une zone géographique.",
-    category: "service",
-  },
-  {
-    id: "tarif_special",
-    label: "Tarif spécial",
-    icon: DollarSign,
-    color: "text-teal-600",
-    bg: "bg-teal-50",
-    desc: "Demandez une tarification personnalisée validée par l'admin.",
-    category: "service",
-  },
-  {
-    id: "option_supplementaire",
-    label: "Option supplémentaire",
-    icon: Plus,
-    color: "text-indigo-600",
-    bg: "bg-indigo-50",
-    desc: "Proposez une option ou service additionnel à vos clients.",
-    category: "service",
+    id: "marketing_ia",
+    label: "Marketing IA",
+    icon: Zap,
+    color: "text-green-600",
+    bg: "bg-green-50",
+    desc: "Publication automatique de vos annonces sur Facebook et Instagram avec contenu généré par IA",
+    category: "ia",
   },
 ];
 
@@ -417,104 +399,7 @@ export default function OwnerCustomizationsPage() {
                             );
                           })}
                         </div>
-
-                        {/* Catégorie Service */}
-                        <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-2">
-                          Options de service
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {CUSTOMIZATION_OPTIONS.filter(
-                            (o) => o.category === "service",
-                          ).map((opt) => {
-                            const Icon = opt.icon;
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => setCustomType(opt.id)}
-                                className={`flex items-start gap-3 p-3 rounded-xl border-2 text-left transition ${
-                                  customType === opt.id
-                                    ? "border-teal-400 bg-teal-50"
-                                    : "border-gray-200 hover:border-teal-200"
-                                }`}
-                              >
-                                <div
-                                  className={`w-8 h-8 ${opt.bg} rounded-lg flex items-center justify-center shrink-0`}
-                                >
-                                  <Icon className={`w-4 h-4 ${opt.color}`} />
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-800">
-                                    {opt.label}
-                                  </p>
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    {opt.desc}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
                       </motion.div>
-                    )}
-
-                    {/* Champs additionnels selon type */}
-                    {customType === "zone_exclusive" && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Zone souhaitée
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Ex: Casablanca — Mohammedia"
-                          value={extraDetails.zone ?? ""}
-                          onChange={(e) =>
-                            setExtraDetails((p) => ({
-                              ...p,
-                              zone: e.target.value,
-                            }))
-                          }
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
-                    )}
-                    {customType === "tarif_special" && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nouveau tarif demandé (MAD)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="Ex: 150"
-                          value={extraDetails.new_price ?? ""}
-                          onChange={(e) =>
-                            setExtraDetails((p) => ({
-                              ...p,
-                              new_price: e.target.value,
-                            }))
-                          }
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
-                    )}
-                    {customType === "option_supplementaire" && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Option proposée
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Ex: Livraison 24h/24"
-                          value={extraDetails.option ?? ""}
-                          onChange={(e) =>
-                            setExtraDetails((p) => ({
-                              ...p,
-                              option: e.target.value,
-                            }))
-                          }
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
                     )}
 
                     {/* Description */}

@@ -52,7 +52,7 @@ class ServiceCustomizationController extends Controller
 
         $data = $request->validate([
             'service_type'        => 'required|in:location,transport_bagages,livraison_colis,demenagement',
-            'customization_type'  => 'required|in:chatbot_indexing,demand_prediction,recommendations,dynamic_pricing,zone_exclusive,tarif_special,option_supplementaire',
+            'customization_type'  => 'required|in:chatbot_indexing,demand_prediction,recommendations,dynamic_pricing,marketing_ia',
             'description'         => 'required|string|min:20|max:1000',
             'details'             => 'nullable|array',
         ]);
@@ -189,7 +189,7 @@ class ServiceCustomizationController extends Controller
     private function applyCustomization(ServiceCustomization $c): void
     {
         try {
-            $aiTypes = ['chatbot_indexing', 'demand_prediction', 'recommendations', 'dynamic_pricing'];
+            $aiTypes = ['chatbot_indexing', 'demand_prediction', 'recommendations', 'dynamic_pricing', 'marketing_ia'];
 
             if (in_array($c->customization_type, $aiTypes)) {
                 // Activer la feature IA
@@ -264,9 +264,7 @@ class ServiceCustomizationController extends Controller
             'demand_prediction'   => 'Prédiction de la demande',
             'recommendations'     => 'Recommandations intelligentes',
             'dynamic_pricing'     => 'Tarification dynamique',
-            'zone_exclusive'      => 'Zone d\'intervention exclusive',
-            'tarif_special'       => 'Tarif spécial',
-            'option_supplementaire' => 'Option supplémentaire',
+            'marketing_ia'      => 'marketing avec IA',
             default               => $type,
         };
     }

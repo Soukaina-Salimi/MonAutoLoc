@@ -21,6 +21,8 @@ services:
       - SANCTUM_STATEFUL_DOMAINS=localhost:3000
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GROQ_MODEL=llama-3.3-70b-versatile
+      - META_APP_ID=${META_APP_ID}
+      - META_APP_SECRET=${META_APP_SECRET}
     volumes:
       - ./auth-service:/var/www/html
       - /var/www/html/vendor
@@ -181,10 +183,9 @@ services:
     restart: unless-stopped
 
   # ── Chatbot agents ───────────────────────────────────────────────────────────
-
-  agent-orchestrator:
-    build: ./agent-orchestrator
-    container_name: agent-orchestrator
+  chatbot-orchestrator:
+    build: ./chatbot-orchestrator
+    container_name: chatbot-orchestrator
     ports:
       - "8006:8006"
     environment:
@@ -197,7 +198,31 @@ services:
       - CACHE_TTL_SECONDS=300
       - MEMORY_TTL_SECONDS=1800
     volumes:
-      - ./agent-orchestrator:/app
+      - ./chatbot-orchestrator:/app
+    depends_on:
+      - vehicle-service
+      - auth-service
+      - booking-service
+      - redis
+    networks:
+      - plateforme-network
+    restart: unless-stopped
+  # ── report generator ───────────────────────────────────────────────────────────
+  report-generator:
+    build: ./report-generator
+    container_name: report-generator
+    ports:
+      - "8011:8011"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - VEHICLE_SERVICE_URL=http://vehicle-service
+      - AUTH_SERVICE_URL=http://auth-service
+      - BOOKING_SERVICE_URL=http://booking-service
+      - REDIS_URL=redis://redis:6379/0
+
+    volumes:
+      - ./report-generator:/app
     depends_on:
       - vehicle-service
       - auth-service
@@ -233,12 +258,83 @@ services:
       - AUTH_SERVICE_URL=http://auth-service
       - BOOKING_SERVICE_URL=http://booking-service
       - REDIS_URL=redis://redis:6379/0
+      - META_APP_ID=${META_APP_ID}
+      - META_APP_SECRET=${META_APP_SECRET}
     volumes:
       - ./marketing-orchestrator:/app
     depends_on:
       - vehicle-service
       - auth-service
       - booking-service
+      - redis
+    networks:
+      - plateforme-network
+    restart: unless-stopped
+
+  # ── PRICING DYNAMIQUE SERVICE ─────────────────────────────────────────────────
+  pricing-dynamique:
+    build: ./pricing-dynamique
+    container_name: pricing-dynamique
+    ports:
+      - "8008:8008"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - VEHICLE_SERVICE_URL=http://vehicle-service
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./pricing-dynamique:/app
+    depends_on:
+      - vehicle-service
+      - redis
+    networks:
+      - plateforme-network
+    restart: unless-stopped
+
+  # ── DEMAND PREDICTION SERVICE ─────────────────────────────────────────────────
+  demand-prediction:
+    build: ./demand-prediction
+    container_name: demand-prediction
+    ports:
+      - "8009:8009"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - VEHICLE_SERVICE_URL=http://vehicle-service
+      - BOOKING_SERVICE_URL=http://booking-service
+      - REDIS_URL=redis://redis:6379/0
+      - MODEL_PATH=/app/models/demand_model.pkl
+    volumes:
+      - ./demand-prediction:/app
+      - demand-model-data:/app/models
+    depends_on:
+      - vehicle-service
+      - booking-service
+      - redis
+    networks:
+      - plateforme-network
+    restart: unless-stopped
+    # ── DEMAND PREDICTION SERVICE ─────────────────────────────────────────────────
+
+    # ── BEHAVIOR ANALYTICS SERVICE ─────────────────────────────────────────────
+  behavior-analytics:
+    build: ./behavior-analytics
+    container_name: behavior-analytics
+    ports:
+      - "8010:8010"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - VEHICLE_SERVICE_URL=http://vehicle-service
+      - BOOKING_SERVICE_URL=http://booking-service
+      - AUTH_SERVICE_URL=http://auth-service
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./behavior-analytics:/app
+    depends_on:
+      - vehicle-service
+      - booking-service
+      - auth-service
       - redis
     networks:
       - plateforme-network
@@ -258,8 +354,12 @@ services:
       - booking-service
       - review-service
       - ocr-service
-      - agent-orchestrator
+      - chatbot-orchestrator
       - marketing-orchestrator
+      - pricing-dynamique
+      - demand-prediction
+      - behavior-analytics
+      - report-generator
     networks:
       - plateforme-network
     restart: unless-stopped
@@ -312,7 +412,7 @@ volumes:
   booking-vendor:
   redis-data:
   paddle_cache:
-
+  demand-model-data:
 # ── NETWORK ───────────────────────────────────────────────────────────────────
 networks:
   plateforme-network:

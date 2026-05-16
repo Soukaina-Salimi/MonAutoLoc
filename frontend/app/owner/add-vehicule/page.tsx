@@ -7,8 +7,12 @@ import SocialAccountsSetup from "@/components/SocialAccountsSetup";
 import MarketingPublisher from "@/components/MarketingPublisher";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import PricingSuggestion from "@/components/PricingSuggestion";
+
 import {
   Car,
+  Lock,
+  Crown,
   PlusCircle,
   LayoutDashboard,
   Calendar,
@@ -184,7 +188,43 @@ export default function AddVehicle() {
 
   const [offersDriver, setOffersDriver] = useState(false);
   const [driverDailyRate, setDriverDailyRate] = useState("");
+  // Ajouter ces états avec les autres states (vers ligne ~100)
+  const [hasDynamicPricing, setHasDynamicPricing] = useState<boolean | null>(
+    null,
+  );
+  const [hasMarketingIA, setHasMarketingIA] = useState<boolean | null>(null);
+  const [loadingFeatures, setLoadingFeatures] = useState(true);
 
+  // Ajouter ce useEffect avec les autres (vers ligne ~140)
+  useEffect(() => {
+    const checkPremiumFeatures = async () => {
+      try {
+        const { data } = await api.get("/ai-features");
+
+        // Vérifier Pricing Dynamique (dynamic_pricing)
+        const pricingFeature = data.find(
+          (f: any) => f.feature_name === "dynamic_pricing",
+        );
+        setHasDynamicPricing(pricingFeature?.is_active === true);
+
+        // Vérifier Marketing IA (marketing_ia)
+        const marketingFeature = data.find(
+          (f: any) => f.feature_name === "marketing_ia",
+        );
+        setHasMarketingIA(marketingFeature?.is_active === true);
+      } catch (error) {
+        console.error("Erreur chargement features premium:", error);
+        setHasDynamicPricing(false);
+        setHasMarketingIA(false);
+      } finally {
+        setLoadingFeatures(false);
+      }
+    };
+
+    if (user?.id) {
+      checkPremiumFeatures();
+    }
+  }, [user?.id]);
   useEffect(() => {
     const userData = localStorage.getItem("user");
     if (!userData) {
@@ -943,6 +983,8 @@ export default function AddVehicle() {
                 </div>
 
                 {/* Année & Prix */}
+
+                {/* Année & Prix */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <OcrInput
                     label="Année"
@@ -958,20 +1000,56 @@ export default function AddVehicle() {
                   />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prix par jour (MAD){" "}
-                      <span className="text-red-500">*</span>
+                      Prix / jour (MAD) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
-                      placeholder="Ex: 300"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      min="0"
-                      step="0.01"
+                      placeholder="Ex: 350"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
                 </div>
+
+                {/* PricingSuggestion — PLEINE LARGEUR, hors du grid */}
+                {/* PricingSuggestion — Premium uniquement si abonnement */}
+                {!loadingFeatures && hasDynamicPricing ? (
+                  <PricingSuggestion
+                    category={category}
+                    city={city}
+                    brand={brand}
+                    model={model}
+                    year={parseInt(year) || new Date().getFullYear()}
+                    fuelType={fuelType}
+                    transmission={transmission}
+                    seats={parseInt(seats) || 5}
+                    offersDriver={offersDriver}
+                    onApply={(suggestedPrice) =>
+                      setPrice(String(suggestedPrice))
+                    }
+                  />
+                ) : !loadingFeatures && !hasDynamicPricing ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Lock className="w-5 h-5 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-600">
+                        Fonctionnalité Premium
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">
+                      La suggestion de prix IA est disponible avec l'abonnement
+                      Premium.
+                    </p>
+                    <button
+                      onClick={() => router.push("/owner/abonnement")}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      Découvrir l'offre Premium
+                    </button>
+                  </div>
+                ) : null}
 
                 {/* ── Caractéristiques techniques ───────────────── */}
                 <div className="flex items-center gap-3">
@@ -1420,18 +1498,46 @@ export default function AddVehicle() {
                   <div className="flex-1 h-px bg-gray-200" />
                 </div>
 
-                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-4">
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-sm mb-1">
-                      Vos comptes réseaux sociaux
-                    </h4>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Connectez vos comptes pour publier automatiquement après
-                      ajout du véhicule
-                    </p>
+                {/* ── Marketing Premium — Uniquement si abonnement ── */}
+                {!loadingFeatures && hasMarketingIA ? (
+                  <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-800 text-sm mb-1">
+                          Vos comptes réseaux sociaux
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                          Connectez vos comptes pour publier automatiquement
+                          après ajout du véhicule
+                        </p>
+                      </div>
+                      <div className="bg-purple-200 text-purple-700 text-[10px] font-bold px-2 py-1 rounded-full">
+                        PREMIUM
+                      </div>
+                    </div>
                     <SocialAccountsSetup />
                   </div>
-                </div>
+                ) : !loadingFeatures && !hasMarketingIA ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Lock className="w-5 h-5 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-600">
+                        Fonctionnalité Premium
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Le marketing automatique sur les réseaux sociaux est
+                      disponible avec l'abonnement Premium.
+                    </p>
+                    <button
+                      onClick={() => router.push("/owner/abonnement")}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      Débloquer le Marketing IA
+                    </button>
+                  </div>
+                ) : null}
                 {/* Info */}
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-blue-800 mb-2 flex items-center">

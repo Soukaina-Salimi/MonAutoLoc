@@ -8,6 +8,7 @@ use App\Services\ContractService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class BookingController extends Controller
 {
@@ -598,5 +599,50 @@ class BookingController extends Controller
             Log::error('getBookingsByVehicules error: ' . $e->getMessage());
             return response()->json([]);
         }
+    }
+
+
+    // GET /api/internal/demand-history?city=Casablanca&category=berline&days=90
+    public function demandHistory(Request $request)
+    {
+        $city     = $request->query('city');
+        $category = $request->query('category');
+        $days     = (int) $request->query('days', 90);
+
+        // Récupérer les IDs des véhicules de cette ville/catégorie
+        $vehiculeIds = [];
+        try {
+            $vRes = Http::timeout(5)->get(
+                env('VEHICLE_SERVICE_URL') . '/api/vehicules',
+                ['city' => $city, 'category' => $category]
+            );
+            if ($vRes->successful()) {
+                $vehiculeIds = collect($vRes->json())->pluck('id')->toArray();
+            }
+        } catch (\Exception $e) {
+        }
+
+        if (empty($vehiculeIds)) {
+            return response()->json([]);
+        }
+
+        // Grouper les réservations par date
+        $history = Booking::whereIn('vehicule_id', $vehiculeIds)
+            ->where('created_at', '>=', now()->subDays($days))
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('COUNT(*) as bookings')
+            )
+            ->groupBy(DB::raw('DATE(created_at)'))
+            ->orderBy('date')
+            ->get();
+
+        return response()->json(
+            $history->map(fn($h) => [
+                'date'     => $h->date,
+                'bookings' => (int) $h->bookings,
+            ])->values()
+        );
     }
 }

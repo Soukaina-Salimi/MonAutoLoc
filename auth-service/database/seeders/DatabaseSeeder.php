@@ -33,12 +33,55 @@ class DatabaseSeeder extends Seeder
 
         // ── Modules IA disponibles ─────────────────────────────────────────
         DB::table('ai_features')->insertOrIgnore([
-            ['feature_name' => 'chatbot_indexing',  'description' => 'Indexation dans le chatbot IA',    'monthly_price' => 15,  'created_at' => now(), 'updated_at' => now()],
-            ['feature_name' => 'demand_prediction', 'description' => 'Prédiction de la demande',         'monthly_price' => 50,  'created_at' => now(), 'updated_at' => now()],
-            ['feature_name' => 'recommendations',   'description' => 'Recommandations intelligentes',    'monthly_price' => 40,  'created_at' => now(), 'updated_at' => now()],
-            ['feature_name' => 'dynamic_pricing',   'description' => 'Pricing dynamique automatique',    'monthly_price' => 60,  'created_at' => now(), 'updated_at' => now()],
-            ['feature_name' => 'client_score',      'description' => 'Score de confiance client',        'monthly_price' => 30,  'created_at' => now(), 'updated_at' => now()],
-            ['feature_name' => 'monthly_report',    'description' => 'Rapport IA mensuel automatique',   'monthly_price' => 25,  'created_at' => now(), 'updated_at' => now()],
+            [
+                'feature_name'  => 'chatbot_indexing',
+                'description'   => 'Vos véhicules apparaissent dans les réponses du chatbot IA AutoRent.',
+                'monthly_price' => 0.00,   // GRATUIT
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'demand_prediction',
+                'description'   => 'Prédiction de la demande par ville/catégorie sur 30-90 jours (Modèle Prophet).',
+                'monthly_price' => 99.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'dynamic_pricing',
+                'description'   => 'Suggestion de prix optimal selon la demande, la saison et la concurrence.',
+                'monthly_price' => 79.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'client_score',
+                'description'   => 'Analyse comportementale RFM + K-Means + prédiction churn de vos clients.',
+                'monthly_price' => 129.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'recommendations',
+                'description'   => 'Vos véhicules recommandés aux bons clients via Collaborative Filtering.',
+                'monthly_price' => 89.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'monthly_report',
+                'description'   => 'Rapport PDF mensuel automatique avec KPIs et recommandations IA.',
+                'monthly_price' => 49.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'feature_name'  => 'marketing_ia',
+                'description'   => 'Publication automatique sur Facebook et Instagram avec contenu généré par IA',
+                'monthly_price' => 49.00,
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
         ]);
     }
 }

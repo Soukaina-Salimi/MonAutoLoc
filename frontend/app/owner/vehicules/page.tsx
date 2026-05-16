@@ -26,6 +26,8 @@ import {
   Fuel,
   Gauge,
   CalendarDays,
+  Lock,
+  Crown,
 } from "lucide-react";
 
 // Interface pour l'utilisateur
@@ -70,6 +72,11 @@ export default function Vehicles() {
   const currentPath = "/owner/vehicules";
   const [openMarketing, setOpenMarketing] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+
+  // ✅ État pour vérifier l'abonnement Marketing IA
+  const [hasMarketingIA, setHasMarketingIA] = useState<boolean | null>(null);
+  const [loadingFeatures, setLoadingFeatures] = useState(true);
+
   useEffect(() => {
     const userData = localStorage.getItem("user");
     const token = localStorage.getItem("token");
@@ -111,6 +118,28 @@ export default function Vehicles() {
 
     fetchVehicles();
   }, []);
+
+  // ✅ Vérifier l'abonnement Marketing IA
+  useEffect(() => {
+    const checkMarketingAccess = async () => {
+      if (!user?.id) return;
+
+      try {
+        const { data } = await api.get("/ai-features");
+        const marketingFeature = data.find(
+          (f: any) => f.feature_name === "marketing_ia",
+        );
+        setHasMarketingIA(marketingFeature?.is_active === true);
+      } catch (error) {
+        console.error("Erreur chargement features premium:", error);
+        setHasMarketingIA(false);
+      } finally {
+        setLoadingFeatures(false);
+      }
+    };
+
+    checkMarketingAccess();
+  }, [user?.id]);
 
   // Filter vehicles based on search
   useEffect(() => {
@@ -169,6 +198,15 @@ export default function Vehicles() {
     }
   };
 
+  const handleOpenMarketing = (vehicle: Vehicle) => {
+    if (hasMarketingIA) {
+      setSelectedVehicle(vehicle);
+      setOpenMarketing(true);
+    } else {
+      router.push("/owner/abonnement");
+    }
+  };
+
   // Calculer le prix moyen
   const calculateAveragePrice = (): number => {
     if (vehicles.length === 0) return 0;
@@ -205,7 +243,8 @@ export default function Vehicles() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {openMarketing && selectedVehicle && (
+      {/* Modal Marketing IA */}
+      {openMarketing && selectedVehicle && hasMarketingIA && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-end mb-2">
@@ -216,7 +255,6 @@ export default function Vehicles() {
                 Fermer
               </button>
             </div>
-
             <MarketingPublisher
               vehicle={selectedVehicle}
               ownerId={user?.id ?? 0}
@@ -224,6 +262,7 @@ export default function Vehicles() {
           </div>
         </div>
       )}
+
       {/* Sidebar */}
       <Sidebar
         user={user || undefined}
@@ -236,14 +275,6 @@ export default function Vehicles() {
           className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
-      )}
-
-      {/* Mobile sidebar backdrop */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        ></div>
       )}
 
       {/* Main Content */}
@@ -301,7 +332,7 @@ export default function Vehicles() {
                 <div>
                   <p className="text-sm text-gray-500">Prix moyen/jour</p>
                   <p className="text-3xl font-bold text-gray-800">
-                    ${calculateAveragePrice()}
+                    {calculateAveragePrice()} MAD
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -392,7 +423,7 @@ export default function Vehicles() {
                       )}
                       <div className="absolute top-2 right-2 bg-white px-2 py-1 rounded-lg shadow-md">
                         <p className="text-sm font-bold text-blue-600">
-                          ${vehicle.price_per_day}/jour
+                          {vehicle.price_per_day} MAD/jour
                         </p>
                       </div>
                     </div>
@@ -431,17 +462,18 @@ export default function Vehicles() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex space-x-2">
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => handleViewVehicle(vehicle.id)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition duration-200 flex items-center justify-center"
+                          className="flex-1 min-w-[70px] px-2 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition duration-200 flex items-center justify-center text-xs sm:text-sm"
                         >
                           <Eye className="w-4 h-4 mr-1" />
                           Voir
                         </button>
                         <button
                           onClick={() => handleEditVehicle(vehicle.id)}
-                          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 flex items-center justify-center"
+                          className="flex-1 min-w-[70px] px-2 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 flex items-center justify-center text-xs sm:text-sm"
                         >
                           <Edit className="w-4 h-4 mr-1" />
                           Modifier
@@ -452,15 +484,29 @@ export default function Vehicles() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => {
-                            setSelectedVehicle(vehicle);
-                            setOpenMarketing(true);
-                          }}
-                          className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm"
-                        >
-                          Marketing IA
-                        </button>
+
+                        {/* Bouton Marketing IA avec vérification premium */}
+                        {!loadingFeatures && hasMarketingIA ? (
+                          <button
+                            onClick={() => handleOpenMarketing(vehicle)}
+                            className="flex-1 min-w-[100px] px-2 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs sm:text-sm font-medium hover:shadow-md transition flex items-center justify-center"
+                          >
+                            Marketing IA
+                          </button>
+                        ) : !loadingFeatures && !hasMarketingIA ? (
+                          <button
+                            onClick={() => router.push("/owner/abonnement")}
+                            className="flex-1 min-w-[100px] px-2 py-2 rounded-lg bg-gray-200 text-gray-500 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 hover:bg-gray-300 transition"
+                            title="Fonctionnalité premium - Abonnement requis"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                            Marketing IA
+                          </button>
+                        ) : (
+                          <div className="flex-1 min-w-[100px] px-2 py-2 rounded-lg bg-gray-100 text-gray-400 text-xs sm:text-sm animate-pulse text-center">
+                            Chargement...
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

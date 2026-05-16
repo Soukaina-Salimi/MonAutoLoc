@@ -180,64 +180,6 @@ class AdminController extends Controller
         return response()->json(['success' => true, 'status' => 'rejected']);
     }
 
-    // ── GET /api/admin/subscriptions ──────────────────────────────────────
-    public function subscriptions(Request $request)
-    {
-        $query = Subscription::with('owner')
-            ->orderByDesc('created_at');
-
-        if ($request->status) {
-            $query->where('status', $request->status);
-        }
-
-        $subs = $query->paginate(20);
-
-        return response()->json([
-            'data' => $subs->map(fn($s) => [
-                'id'             => $s->id,
-                'plan'           => $s->plan,
-                'status'         => $s->status,
-                'payment_amount' => $s->payment_amount,
-                'payment_proof'  => $s->payment_proof,
-                'started_at'     => $s->started_at?->format('d/m/Y'),
-                'expires_at'     => $s->expires_at?->format('d/m/Y'),
-                'created_at'     => $s->created_at->format('d/m/Y'),
-                'owner' => [
-                    'id'    => $s->owner->id,
-                    'name'  => $s->owner->agency_name ?? $s->owner->name,
-                    'email' => $s->owner->email,
-                    'phone' => $s->owner->phone,
-                ],
-            ]),
-            'total'       => $subs->total(),
-            'current_page' => $subs->currentPage(),
-            'last_page'   => $subs->lastPage(),
-        ]);
-    }
-
-    // ── PATCH /api/admin/subscriptions/{id}/activate ──────────────────────
-    public function activateSubscription(int $id)
-    {
-        $sub = Subscription::findOrFail($id);
-        $sub->update([
-            'status'     => 'active',
-            'started_at' => now(),
-            'expires_at' => now()->addMonth(),
-        ]);
-
-        // Activer le module chatbot_indexing automatiquement
-        $this->activateChatbotIndexing($sub->owner_id);
-
-        return response()->json(['success' => true]);
-    }
-
-    // ── PATCH /api/admin/subscriptions/{id}/reject ────────────────────────
-    public function rejectSubscription(int $id)
-    {
-        $sub = Subscription::findOrFail($id);
-        $sub->update(['status' => 'cancelled']);
-        return response()->json(['success' => true]);
-    }
 
     private function activateChatbotIndexing(int $ownerId): void
     {

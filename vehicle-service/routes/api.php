@@ -40,8 +40,10 @@ Route::middleware('auth.service')->group(function () {
     // Changer le statut d'un véhicule (available / unavailable / maintenance)
     Route::patch('/vehicules/{id}/status', [VehiculeController::class, 'updateStatus']);
 
-    Route::get('/owner/stats', [VehiculeController::class, 'stats']);
-    Route::get('/owner/recent-bookings', [VehiculeController::class, 'recentBookings']);
+    Route::get('/owner/stats', [OwnerController::class, 'stats']);
+    Route::get('/owner/recent-bookings', [OwnerController::class, 'recentBookings']);
+    Route::get('/owner/revenue-chart', [OwnerController::class, 'revenueChart']);
+    Route::get('/owner/top-vehicles', [OwnerController::class, 'topVehicles']);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

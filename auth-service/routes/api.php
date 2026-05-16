@@ -20,6 +20,8 @@ use App\Http\Controllers\Api\SubscriptionController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login',    [AuthController::class, 'login']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 // OAuth flows — sans auth sanctum (redirect browser)
 Route::get('/social/facebook/connect',  [SocialAuthController::class, 'facebookConnect'])
     ->middleware('auth:sanctum');
@@ -121,11 +123,6 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::patch('/admin/documents/{id}/verify',  [AdminController::class, 'verifyDocument']);
     Route::patch('/admin/documents/{id}/reject',  [AdminController::class, 'rejectDocument']);
 
-    // Abonnements
-    Route::get('/admin/subscriptions',                       [AdminController::class, 'subscriptions']);
-    Route::patch('/admin/subscriptions/{id}/activate',       [AdminController::class, 'activateSubscription']);
-    Route::patch('/admin/subscriptions/{id}/reject',         [AdminController::class, 'rejectSubscription']);
-
     // Customisations
     Route::get('/admin/customizations',           [AdminController::class, 'customizations']);
     Route::patch('/admin/customizations/{id}',    [AdminController::class, 'updateCustomization']);
@@ -135,4 +132,24 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
     // Campagnes marketing
     Route::get('/admin/campaigns',                [AdminController::class, 'campaigns']);
+});
+
+
+
+// Features disponibles (publique)
+Route::get('/ai-features', [SubscriptionController::class, 'features'])
+    ->middleware('auth:sanctum');
+
+// Owner
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/subscriptions/my',          [SubscriptionController::class, 'my']);
+    Route::post('/subscriptions',            [SubscriptionController::class, 'store']);
+    Route::patch('/subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
+});
+
+// Admin
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('/admin/subscriptions',                   [SubscriptionController::class, 'index']);
+    Route::patch('/admin/subscriptions/{id}/activate',   [SubscriptionController::class, 'activate']);
+    Route::patch('/admin/subscriptions/{id}/reject',     [SubscriptionController::class, 'reject']);
 });

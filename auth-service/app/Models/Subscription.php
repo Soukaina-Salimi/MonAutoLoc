@@ -12,6 +12,7 @@ class Subscription extends Model
     protected $fillable = [
         'owner_id',
         'plan',
+        'feature_id',
         'status',
         'payment_proof',
         'payment_amount',
@@ -36,6 +37,12 @@ class Subscription extends Model
         return $this->belongsTo(User::class, 'owner_id');
     }
 
+    public function feature()
+    {
+        return $this->belongsTo(AiFeature::class, 'feature_id', 'id');
+    }
+
+    //
     // ── Helpers ────────────────────────────────────────────────────────────
 
     public function isActive(): bool

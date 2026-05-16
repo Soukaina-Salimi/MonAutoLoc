@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 
 class OwnerController extends Controller
 {
@@ -126,6 +127,142 @@ class OwnerController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json(['message' => 'Erreur'], 500);
+        }
+    }
+
+    public function stats(Request $request)
+    {
+
+        // ✅ Utiliser auth_user au lieu de user()
+        $authUser = $request->input('auth_user');
+
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $userId = $authUser['id'];  // ← Récupérer l'ID depuis auth_user
+
+
+        $vehicles = Vehicule::where('user_id', $userId)->get();
+        $vIds     = $vehicles->pluck('id')->toArray();
+
+        // Appel booking-service pour les stats
+        $bookingStats = [];
+        try {
+            $res = Http::withToken($request->bearerToken())
+                ->get(env('BOOKING_SERVICE_URL') . '/api/owner/booking-stats', [
+                    'vehicule_ids' => implode(',', $vIds)
+                ]);
+            $bookingStats = $res->json() ?? [];
+        } catch (\Exception $e) {
+        }
+
+        return response()->json([
+            'total_vehicles'             => $vehicles->count(),
+            'available_vehicles'         => $vehicles->where('status', 'available')->count(),
+            'rented_vehicles'            => $vehicles->where('status', 'rented')->count(),
+            'total_bookings'             => $bookingStats['total'] ?? 0,
+            'pending_bookings'           => $bookingStats['pending'] ?? 0,
+            'confirmed_bookings'         => $bookingStats['confirmed'] ?? 0,
+            'completed_bookings'         => $bookingStats['completed'] ?? 0,
+            'total_earnings'             => $bookingStats['total_earnings'] ?? 0,
+            'revenue_this_month'         => $bookingStats['revenue_this_month'] ?? 0,
+            'revenue_last_month'         => $bookingStats['revenue_last_month'] ?? 0,
+            'bookings_this_month'        => $bookingStats['bookings_this_month'] ?? 0,
+            'avg_rating'                => 0,
+            'total_service_requests'     => $bookingStats['total_service_requests'] ?? 0,
+            'pending_service_requests'   => $bookingStats['pending_service_requests'] ?? 0,
+            'occupation_rate'            => $bookingStats['occupation_rate'] ?? 0,
+        ]);
+    }
+
+    public function revenueChart(Request $request)
+    {
+        // ✅ Utiliser auth_user au lieu de user()
+        $authUser = $request->input('auth_user');
+
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $userId = $authUser['id'];  // ← Récupérer l'ID depuis auth_user
+        $months = (int) $request->query('months', 6);
+
+        $vIds = Vehicule::where('user_id', $userId)->pluck('id')->toArray();
+
+        try {
+            $res = Http::withToken($request->bearerToken())
+                ->get(env('BOOKING_SERVICE_URL') . '/api/owner/revenue-chart', [
+                    'vehicule_ids' => implode(',', $vIds),
+                    'months'       => $months,
+                ]);
+            return response()->json($res->json());
+        } catch (\Exception $e) {
+            // Données par défaut si booking-service inaccessible
+            $data = [];
+            for ($i = $months - 1; $i >= 0; $i--) {
+                $date   = now()->subMonths($i);
+                $data[] = [
+                    'month'    => $date->format('M Y'),
+                    'revenue'  => 0,
+                    'bookings' => 0,
+                ];
+            }
+            return response()->json($data);
+        }
+    }
+
+    public function topVehicles(Request $request)
+    {
+        // ✅ Utiliser auth_user au lieu de user()
+        $authUser = $request->input('auth_user');
+
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $userId = $authUser['id'];  // ← Récupérer l'ID depuis auth_user
+
+        $vehicles = Vehicule::where('user_id', $userId)
+            ->orderByDesc('created_at')
+            ->limit(5)
+            ->get([
+                'id',
+                'brand',
+                'model',
+                'year',
+                'price_per_day',
+                'city',
+                'status',
+            ]);
+
+        return response()->json($vehicles);
+    }
+
+    public function recentBookings(Request $request)
+    {
+        // ✅ Utiliser auth_user au lieu de user()
+        $authUser = $request->input('auth_user');
+
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $userId = $authUser['id'];  // ← Récupérer l'ID depuis auth_user
+
+
+        $limit = (int) $request->query('limit', 5);
+        $vIds  = Vehicule::where('user_id', $userId)->pluck('id')->toArray();
+
+        try {
+            $res = Http::withToken($request->bearerToken())
+                ->get(env('BOOKING_SERVICE_URL') . '/api/owner/recent-bookings', [
+                    'vehicule_ids' => implode(',', $vIds),
+                    'limit'        => $limit,
+                ]);
+            return response()->json($res->json());
+        } catch (\Exception $e) {
+            return response()->json([]);
         }
     }
 }
