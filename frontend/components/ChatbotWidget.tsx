@@ -269,8 +269,8 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-6 right-6 z-50 w-[370px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
-            style={{ maxHeight: minimized ? "64px" : "560px" }}
+            className="fixed bottom-4 right-4 z-50 w-[320px] md:w-[340px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
+            style={{ maxHeight: minimized ? "60px" : "500px" }}
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-3 flex items-center justify-between shrink-0">
@@ -313,7 +313,7 @@ export default function ChatbotWidget({ context }: ChatbotWidgetProps) {
                 {/* Messages */}
                 <div
                   className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
-                  style={{ minHeight: "300px", maxHeight: "380px" }}
+                  style={{ minHeight: "220px", maxHeight: "300px" }}
                 >
                   {messages.map((msg, i) => (
                     <div

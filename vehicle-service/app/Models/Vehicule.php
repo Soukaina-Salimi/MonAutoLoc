@@ -41,16 +41,35 @@ class Vehicule extends Model
     ];
 
     const CATEGORIES = [
-        'voiture', 'suv', 'utilitaire', 'camion',
-        'moto', 'van', 'minibus',
+        'voiture',
+        'citadine',
+        'berline',
+        'suv',
+        '4x4',
+        'utilitaire',
+        'monospace',
+        'coupe',
+        'cabriolet',
+        'luxe',
+        'electrique',
+        'moto',
+        'camion',
+        'minibus',
+        'van',
     ];
 
     const FUEL_TYPES = [
-        'essence', 'diesel', 'hybride', 'electrique', 'gpl',
+        'essence',
+        'diesel',
+        'hybride',
+        'electrique',
+        'gpl',
     ];
 
     const STATUSES = [
-        'available', 'unavailable', 'maintenance',
+        'available',
+        'unavailable',
+        'maintenance',
     ];
 
     // ── Relations ──────────────────────────────────────────────────────────

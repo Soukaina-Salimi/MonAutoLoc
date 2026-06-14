@@ -8,10 +8,11 @@ import asyncio
 import httpx
 import json
 import os
+import time
 import logging
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("demand_prediction")
 
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -27,7 +28,7 @@ async def predict(
 ) -> dict:
     """
     Prédit la demande et génère des insights actionnables pour l'owner.
-    
+
     Pipeline:
     1. Récupérer données réelles depuis booking-service
     2. Entraîner/récupérer modèle Prophet
@@ -36,44 +37,128 @@ async def predict(
     5. Retourner résultat complet
     """
 
-    # ── 1. Données réelles (en parallèle avec init modèle) ───────────────
+    # ── 1. Données réelles ────────────────────────────────────────────────
     from agents.ml.features import fetch_real_demand_data
     from agents.ml.prophet_model import get_predictor
 
+    logger.info("[STEP 1] ▶ Récupération données réelles (booking-service)")
+    t0 = time.time()
     real_data = await fetch_real_demand_data(city, category, days=90)
+    dur = round((time.time() - t0) * 1000)
+
+    logger.info(
+        f"[STEP 1] Données récupérées | {dur}ms | "
+        f"points={len(real_data)} | "
+        f"{'>= 14 jours -> données réelles utilisables' if len(real_data) >= 14 else '< 14 jours -> cold start (synthétique)'}"
+    )
 
     # ── 2. Entraîner/récupérer le modèle ─────────────────────────────────
-    # En prod → get_predictor depuis cache, sinon train
+    logger.info("[STEP 2] ▶ Cache modèle Prophet")
     loop = asyncio.get_event_loop()
+
+    t0 = time.time()
     predictor = await loop.run_in_executor(
         None,
         lambda: get_predictor(city, category)
     )
+    dur = round((time.time() - t0) * 1000)
+    logger.info(
+        f"[STEP 2] Modèle prêt | {dur}ms | key={city}_{category}".lower() + " "
+        f"| trained={predictor.is_trained}"
+    )
 
     # Si nouvelles données réelles → re-entraîner
     if real_data and len(real_data) >= 14:
+        logger.info(
+            f"[STEP 2] ▶ Ré-entraînement avec {len(real_data)} points réels"
+        )
+        t0 = time.time()
         await loop.run_in_executor(
             None,
             lambda: predictor.train(real_data)
         )
+        dur = round((time.time() - t0) * 1000)
+        logger.info(f"[STEP 2] Ré-entraînement terminé | {dur}ms")
+    else:
+        logger.info("[STEP 2] ⏭ Pas de ré-entraînement (données réelles insuffisantes)")
 
     # ── 3. Générer les prédictions ────────────────────────────────────────
+    logger.info(f"[STEP 3] ▶ Modèle Prophet — prédiction sur {days_ahead} jours")
+    t0 = time.time()
     summary = await loop.run_in_executor(
         None,
         lambda: predictor.predict_summary(days_ahead)
     )
+    dur = round((time.time() - t0) * 1000)
+
+    logger.info(
+        f"[STEP 3] Prédiction terminée | {dur}ms | "
+        f"avg_daily={summary.get('avg_daily')} | "
+        f"trend={summary.get('trend_direction')} | "
+        f"high_demand_days={summary.get('high_demand_days')}/{days_ahead} | "
+        f"weekend_avg={summary.get('weekend_avg')} | "
+        f"ferie_count={summary.get('ferie_count')}"
+    )
+    peak = summary.get("peak_day", {})
+    low  = summary.get("lowest_day", {})
+    if peak:
+        logger.info(
+            f"[STEP 3] Pic: {peak.get('date')} ({peak.get('weekday')}) | "
+            f"predicted={peak.get('predicted')} | level={peak.get('level')}"
+        )
+    if low:
+        logger.info(
+            f"[STEP 3] Creux: {low.get('date')} ({low.get('weekday')}) | "
+            f"predicted={low.get('predicted')} | level={low.get('level')}"
+        )
+
+    # Aperçu des 7 premiers jours
+    for p in summary.get("predictions", [])[:7]:
+        logger.info(
+            f"[STEP 3]   {p['date']} ({p['weekday']}) | "
+            f"yhat={p['predicted']} [{p['lower']}-{p['upper']}] | "
+            f"level={p['level']}"
+            f"{' | FÉRIÉ' if p['is_ferie'] else ''}"
+        )
 
     # ── 4. Concurrence : infos véhicule + insights LLM ───────────────────
+    logger.info("[STEP 4] ▶ asyncio.gather(VehicleInfo, InsightsLLM)")
+    t0 = time.time()
     vehicle_info, llm_insights = await asyncio.gather(
         _fetch_vehicle_info(vehicule_id) if vehicule_id else asyncio.coroutine(lambda: {})(),
         _generate_insights(city, category, summary, real_data),
         return_exceptions=True,
     )
+    dur = round((time.time() - t0) * 1000)
 
-    if isinstance(vehicle_info, Exception):  vehicle_info = {}
-    if isinstance(llm_insights, Exception):  llm_insights = {}
+    if isinstance(vehicle_info, Exception):
+        logger.warning(f"[STEP 4]   VehicleInfo exception: {vehicle_info}")
+        vehicle_info = {}
+    if isinstance(llm_insights, Exception):
+        logger.warning(f"[STEP 4]   InsightsLLM exception: {llm_insights}")
+        llm_insights = {}
 
-    # ── 5. Construire le résultat final ───────────────────────────────────
+    logger.info(
+        f"[STEP 4] gather terminé | {dur}ms | "
+        f"vehicle_info={'OK' if vehicle_info else 'vide'} | "
+        f"insights_confidence={llm_insights.get('confidence', '—')}"
+    )
+
+    # ── 5. Recommandations de prix ────────────────────────────────────────
+    logger.info("[STEP 5] ▶ Yield management — recommandations de prix (7j)")
+    pricing_reco = _build_pricing_reco(summary)
+    for r in pricing_reco:
+        logger.info(
+            f"[STEP 5]   {r['date']} ({r['weekday']}) | demand={r['demand']} | "
+            f"{r['indicator']} {r['advice']} | {r['price_adjustment']}"
+        )
+
+    # ── 6. Construire le résultat final ───────────────────────────────────
+    logger.info(
+        f"[STEP 6] ▶ Assemblage résultat final | "
+        f"data_source={'real' if len(real_data) >= 14 else 'synthetic+real'}"
+    )
+
     return {
         "city":          city,
         "category":      category,
@@ -100,17 +185,20 @@ async def predict(
         "insights":    llm_insights,
 
         # Recommandations de prix
-        "pricing_recommendations": _build_pricing_reco(summary),
+        "pricing_recommendations": pricing_reco,
     }
 
 
 async def _fetch_vehicle_info(vehicule_id: int) -> dict:
     """Récupère les infos d'un véhicule spécifique."""
     try:
+        logger.info(f"[STEP 4]   GET {VEHICLE_SERVICE}/api/vehicules/{vehicule_id}")
         async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get(f"{VEHICLE_SERVICE}/api/vehicules/{vehicule_id}")
+        logger.info(f"[STEP 4]   vehicle-service → status={resp.status_code}")
         return resp.json() if resp.status_code == 200 else {}
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[STEP 4]   _fetch_vehicle_info erreur: {e}")
         return {}
 
 
@@ -157,7 +245,13 @@ Génère une analyse CONCRÈTE et ACTIONNABLE pour l'owner en JSON :
 Contexte Maroc : demande pic en juillet-août (tourisme), décembre (vacances).
 Réponds UNIQUEMENT en JSON valide, aucun texte avant/après."""
 
+    logger.info(
+        f"[STEP 4]   Prompt LLM construit | {len(prompt)} chars | "
+        f"model={GROQ_MODEL} | temperature=0.3 | max_tokens=600"
+    )
+
     try:
+        t0 = time.time()
         async with httpx.AsyncClient(timeout=12.0) as client:
             resp = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -169,6 +263,8 @@ Réponds UNIQUEMENT en JSON valide, aucun texte avant/après."""
                     "temperature": 0.3,
                 }
             )
+        dur = round((time.time() - t0) * 1000)
+        logger.info(f"[STEP 4]   Groq API → status={resp.status_code} | {dur}ms")
 
         content = resp.json()["choices"][0]["message"]["content"].strip()
 
@@ -178,10 +274,16 @@ Réponds UNIQUEMENT en JSON valide, aucun texte avant/après."""
             if content.startswith("json"):
                 content = content[4:]
 
-        return json.loads(content.strip())
+        parsed = json.loads(content.strip())
+        logger.info(
+            f"[STEP 4]   JSON parsé | confidence={parsed.get('confidence')} | "
+            f"best_periods={len(parsed.get('best_periods', []))} | "
+            f"risk_alert={'oui' if parsed.get('risk_alert') else 'non'}"
+        )
+        return parsed
 
     except Exception as e:
-        logger.warning(f"[demand_agent] LLM insights failed: {e}")
+        logger.warning(f"[STEP 4]   ⚠ LLM insights failed: {e} → fallback statique")
         return {
             "market_analysis":  f"Le marché de la location de {category} à {city} montre une demande {trend}.",
             "demand_outlook":   f"Demande prévue : {avg:.1f} réservations/jour en moyenne.",

@@ -452,6 +452,208 @@ class BookingController extends Controller
         }
     }
 
+
+    // ════════════════════════════════════════════════════════════════════════
+    // ROUTES INTERNES — behavior-analytics
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /api/internal/owner/{ownerId}/bookings-analytics
+     *
+     * Retourne l'historique des réservations d'un owner
+     * dans le format attendu par behavior_agent.py :
+     * [
+     *   {
+     *     "client_id":    42,
+     *     "booking_id":   1,
+     *     "amount":       560.0,
+     *     "date":         "2026-04-12",
+     *     "duration":     2,
+     *     "category":     "berline",
+     *     "status":       "completed"
+     *   },
+     *   ...
+     * ]
+     */
+    public function ownerBookingsAnalytics(int $ownerId)
+    {
+        try {
+            // 1. Récupérer les IDs des véhicules de cet owner
+            $vehiculesRes = Http::timeout(10)->get(
+                env('VEHICLE_SERVICE_URL', 'http://vehicle-service') . '/api/vehicules'
+            );
+
+            if ($vehiculesRes->failed()) {
+                return response()->json([]);
+            }
+
+            // Indexer les véhicules par ID pour récupérer la catégorie facilement
+            $vehiculesMap = collect($vehiculesRes->json())
+                ->filter(fn($v) => ($v['user_id'] ?? null) === $ownerId)
+                ->keyBy('id');
+
+            if ($vehiculesMap->isEmpty()) {
+                return response()->json([]);
+            }
+
+            $vehiculeIds = $vehiculesMap->keys()->toArray();
+
+            // 2. Récupérer les réservations de ces véhicules
+            $bookings = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->whereIn('status', ['approved', 'completed'])
+                ->orderBy('created_at')
+                ->get();
+
+            // 3. Formater pour le behavior_agent
+            $result = $bookings->map(function ($booking) use ($vehiculesMap) {
+                $vehicule = $vehiculesMap->get($booking->vehicule_id);
+                $days     = \Carbon\Carbon::parse($booking->start_date)
+                    ->diffInDays(\Carbon\Carbon::parse($booking->end_date));
+
+                return [
+                    'client_id'  => (int)  $booking->user_id,
+                    'booking_id' => (int)  $booking->id,
+                    'amount'     => (float) $booking->total_price,
+                    'date'       => $booking->created_at->format('Y-m-d'),
+                    'duration'   => max(1, (int) $days),
+                    'category'   => $vehicule['category'] ?? 'berline',
+                    'status'     => $booking->status,
+                ];
+            })->values();
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('ownerBookingsAnalytics error: ' . $e->getMessage());
+            return response()->json([]);
+        }
+    }
+
+    /**
+     * GET /api/internal/owner/{ownerId}/clients
+     *
+     * Retourne la liste des clients uniques qui ont réservé
+     * un véhicule de cet owner, dans le format attendu par behavior_agent.py :
+     * [
+     *   {
+     *     "id":         42,
+     *     "name":       "Sara Benali",
+     *     "email":      "sara@example.com",
+     *     "created_at": "2026-01-15"
+     *   },
+     *   ...
+     * ]
+     */
+    public function ownerClients(int $ownerId)
+    {
+        try {
+            // 1. Récupérer les IDs des véhicules de cet owner
+            $vehiculesRes = Http::timeout(10)->get(
+                env('VEHICLE_SERVICE_URL', 'http://vehicle-service') . '/api/vehicules'
+            );
+
+            if ($vehiculesRes->failed()) {
+                return response()->json([]);
+            }
+
+            $vehiculeIds = collect($vehiculesRes->json())
+                ->filter(fn($v) => ($v['user_id'] ?? null) === $ownerId)
+                ->pluck('id')
+                ->toArray();
+
+            if (empty($vehiculeIds)) {
+                return response()->json([]);
+            }
+
+            // 2. Récupérer les client_ids uniques ayant réservé ces véhicules
+            $clientIds = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->whereIn('status', ['approved', 'completed'])
+                ->distinct()
+                ->pluck('user_id')
+                ->toArray();
+
+            if (empty($clientIds)) {
+                return response()->json([]);
+            }
+
+            // 3. Récupérer les infos de chaque client depuis auth-service
+            $clients = [];
+            foreach ($clientIds as $clientId) {
+                try {
+                    $userRes = Http::timeout(5)->get(
+                        env('AUTH_SERVICE_URL', 'http://auth-service') . "/api/users/{$clientId}"
+                    );
+                    if ($userRes->successful()) {
+                        $u = $userRes->json();
+                        $clients[] = [
+                            'id'         => (int) ($u['id'] ?? $clientId),
+                            'name'       => $u['name']       ?? 'Client #' . $clientId,
+                            'email'      => $u['email']      ?? '',
+                            'created_at' => isset($u['created_at'])
+                                ? \Carbon\Carbon::parse($u['created_at'])->format('Y-m-d')
+                                : now()->format('Y-m-d'),
+                        ];
+                    } else {
+                        // Si auth-service ne trouve pas le client, retourner un placeholder
+                        $clients[] = [
+                            'id'         => (int) $clientId,
+                            'name'       => 'Client #' . $clientId,
+                            'email'      => '',
+                            'created_at' => now()->format('Y-m-d'),
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("ownerClients fetchUser #{$clientId}: " . $e->getMessage());
+                    $clients[] = [
+                        'id'         => (int) $clientId,
+                        'name'       => 'Client #' . $clientId,
+                        'email'      => '',
+                        'created_at' => now()->format('Y-m-d'),
+                    ];
+                }
+            }
+
+            return response()->json($clients);
+        } catch (\Exception $e) {
+            Log::error('ownerClients error: ' . $e->getMessage());
+            return response()->json([]);
+        }
+    }
+
+    // ── POST /api/bookings/check-availability — chatbot DispoAgent ────────
+    public function checkAvailability(Request $request)
+    {
+        try {
+            $vehiculeIds = $request->input('vehicule_ids', []);
+            $startDate   = $request->input('start_date');
+            $endDate     = $request->input('end_date');
+
+            if (empty($vehiculeIds) || !$startDate || !$endDate) {
+                return response()->json(['available' => [], 'unavailable' => []]);
+            }
+
+            $unavailableIds = Booking::whereIn('vehicule_id', $vehiculeIds)
+                ->whereIn('status', ['pending', 'approved'])
+                ->where('start_date', '<', $endDate)
+                ->where('end_date',   '>', $startDate)
+                ->pluck('vehicule_id')
+                ->unique()
+                ->toArray();
+
+            $availableIds = array_values(
+                array_diff($vehiculeIds, $unavailableIds)
+            );
+
+            return response()->json([
+                'available'         => $availableIds,
+                'unavailable'       => array_values($unavailableIds),
+                'unavailable_count' => count($unavailableIds),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('checkAvailability error: ' . $e->getMessage());
+            return response()->json(['available' => [], 'unavailable' => []]);
+        }
+    }
+
     // ── GET /api/vehicules/{id}/active-bookings — interne ─────────────────
     public function activeBookings(int $vehiculeId)
     {

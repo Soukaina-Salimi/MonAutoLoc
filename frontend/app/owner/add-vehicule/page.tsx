@@ -513,15 +513,20 @@ export default function AddVehicle() {
 
   const categories = [
     { value: "voiture", label: "Voiture", icon: Car },
-    { value: "moto", label: "Moto", icon: Bike },
-    { value: "scooter", label: "Scooter", icon: Bike },
-    { value: "camion", label: "Camion", icon: Truck },
+    { value: "citadine", label: "Citadine", icon: Car },
+    { value: "berline", label: "Berline", icon: Car },
+    { value: "suv", label: "SUV", icon: Car },
+    { value: "4x4", label: "4x4", icon: Truck },
     { value: "utilitaire", label: "Utilitaire", icon: Truck },
+    { value: "monospace", label: "Monospace", icon: Car },
+    { value: "coupe", label: "Coupé", icon: Car },
+    { value: "cabriolet", label: "Cabriolet", icon: Car },
+    { value: "luxe", label: "Luxe", icon: Car },
+    { value: "electrique", label: "Électrique", icon: Car },
+    { value: "moto", label: "Moto", icon: Bike },
+    { value: "camion", label: "Camion", icon: Truck },
+    { value: "minibus", label: "Minibus", icon: Truck },
     { value: "van", label: "Van", icon: Truck },
-    { value: "velo", label: "Vélo", icon: Bike },
-    { value: "trottinette", label: "Trottinette", icon: Bike },
-    { value: "quad", label: "Quad", icon: Bike },
-    { value: "bateau", label: "Bateau", icon: Car },
   ];
   const fuelTypes = ["Essence", "Diesel", "Électrique", "Hybride", "GPL"];
   const transmissionTypes = ["Manuelle", "Automatique"];
@@ -1108,9 +1113,19 @@ export default function AddVehicle() {
                 {/* Places & Cylindrée & Puissance */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {(category === "voiture" ||
+                    category === "citadine" ||
+                    category === "berline" ||
+                    category === "suv" ||
+                    category === "4x4" ||
                     category === "utilitaire" ||
+                    category === "monospace" ||
+                    category === "coupe" ||
+                    category === "cabriolet" ||
+                    category === "luxe" ||
+                    category === "electrique" ||
                     category === "van" ||
-                    category === "camion") && (
+                    category === "camion" ||
+                    category === "minibus") && (
                     <OcrInput
                       label="Nombre de places"
                       value={seats}

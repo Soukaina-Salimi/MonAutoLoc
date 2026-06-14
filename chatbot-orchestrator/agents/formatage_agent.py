@@ -38,6 +38,8 @@ RÈGLES :
 - Si chauffeur inclus, mentionner le surcoût
 - Terminer par une question d'aide si pertinent
 - Ne jamais mentionner d'immatriculation, VIN, email, téléphone direct
+- Génère une réponse naturelle en utilisant EXACTEMENT ces données.
+- Ne mentionne AUCUN autre véhicule que ceux listés ci-dessus.
 
 CONTEXTE PAGE : {context.get('page', 'general')}"""
 
@@ -58,7 +60,7 @@ CONTEXTE PAGE : {context.get('page', 'general')}"""
                     "model":       GROQ_MODEL,
                     "messages":    messages_for_groq,
                     "max_tokens":  350,
-                    "temperature": 0.5,
+                    "temperature": 0.1,
                 }
             )
 

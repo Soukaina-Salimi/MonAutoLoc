@@ -207,26 +207,56 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
     return np.array(image)
 
 
-def extract_text_with_paddle(img_array: np.ndarray) -> str:
+def extract_text_with_paddle(img_array: np.ndarray) -> tuple[str, list[dict]]:
     """
     Utilise PaddleOCR pour extraire le texte brut de l'image.
-    Compatible avec les versions récentes de PaddleOCR.
+    
+    Returns:
+        tuple: (raw_text, details_list)
+        - raw_text: Texte brut concaténé
+        - details_list: Liste de dicts avec texte, confiance, position
     """
-    # Version récente : utiliser .ocr() au lieu de .predict()
     result = ocr_engine.ocr(img_array, cls=True)
     
     lines = []
+    details = []
+    
     if result and result[0]:
-        for line in result[0]:
-            # Structure PaddleOCR récente : [[coords], (text, confidence)]
+        for idx, line in enumerate(result[0]):
             if len(line) >= 2:
                 text, confidence = line[1]
+                bbox = line[0]
+                
                 if confidence >= 0.50 and text.strip():
                     lines.append(text.strip())
+                    details.append({
+                        "index": idx + 1,
+                        "text": text.strip(),
+                        "confidence": round(confidence, 3),
+                        "position": {
+                            "x1": round(bbox[0][0], 1),
+                            "y1": round(bbox[0][1], 1),
+                            "x2": round(bbox[2][0], 1),
+                            "y2": round(bbox[2][1], 1)
+                        }
+                    })
     
     raw_text = "\n".join(lines)
-    logger.info(f"PaddleOCR extrait {len(lines)} lignes (confiance ≥ 50%)")
-    return raw_text
+    
+    # Statistiques de confiance (uniquement logs)
+    avg_confidence = sum(d["confidence"] for d in details) / len(details) if details else 0
+    high_conf = sum(1 for d in details if d["confidence"] >= 0.80)
+    medium_conf = sum(1 for d in details if 0.60 <= d["confidence"] < 0.80)
+    low_conf = sum(1 for d in details if d["confidence"] < 0.60)
+    
+    logger.info(f"PaddleOCR extrait {len(details)} lignes (confiance ≥ 50%)")
+    logger.info(f"  → Haute confiance (≥80%): {high_conf} lignes")
+    logger.info(f"  → Confiance moyenne (60-80%): {medium_conf} lignes")
+    logger.info(f"  → Faible confiance (50-60%): {low_conf} lignes")
+    logger.info(f"  → Confiance moyenne globale: {avg_confidence:.2%}")
+    
+    return raw_text, details
+
 
 def parse_with_groq(raw_text: str, doc_type: str) -> dict:
     """
@@ -268,7 +298,6 @@ def parse_with_groq(raw_text: str, doc_type: str) -> dict:
 
     except json.JSONDecodeError as e:
         logger.error(f"Groq JSON parse error: {e} — contenu: {content[:200]}")
-        # Tentative de récupération : chercher un JSON dans le texte
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             try:
@@ -406,6 +435,7 @@ def health_check():
 async def extract_document(
     file: UploadFile = File(...),
     doc_type: str    = Form(...),
+    verbose: bool    = Form(False),
 ):
     """
     Endpoint principal d'extraction OCR.
@@ -414,13 +444,7 @@ async def extract_document(
     - file : Image du document (JPG, PNG, WebP)
     - doc_type : Type de document
       (cin | cin_verso | permis | permis_verso | carte_grise | carte_grise_verso)
-
-    Retourne :
-    - success : bool
-    - doc_type : str
-    - raw_text : str (texte brut extrait par PaddleOCR)
-    - data : dict (données structurées extraites par Groq)
-    - timing : dict (temps de traitement par étape)
+    - verbose : bool (optionnel) - retourne les détails PaddleOCR si True
     """
     # Validation du type de document
     valid_types = ["cin", "cin_verso", "permis", "permis_verso",
@@ -451,27 +475,39 @@ async def extract_document(
         img_array = preprocess_image(image_bytes)
         t_preprocess = time.time() - t0
 
-        # PaddleOCR
+        # PaddleOCR - ✅ CORRECTION : déballer le tuple
         t0 = time.time()
-        raw_text = extract_text_with_paddle(img_array)
+        raw_text, ocr_details = extract_text_with_paddle(img_array)
         t_ocr = time.time() - t0
         logger.info(f"OCR terminé en {t_ocr:.2f}s")
+        
+        # Afficher les détails dans les logs
+        logger.info("=" * 60)
+        logger.info("📝 DÉTAIL DES LIGNES EXTRAITES PAR PADDLEOCR:")
+        logger.info("=" * 60)
+        for detail in ocr_details:
+            conf_emoji = "🟢" if detail["confidence"] >= 0.80 else "🟡" if detail["confidence"] >= 0.60 else "🔴"
+            logger.info(f"  {conf_emoji} Ligne {detail['index']:2d} | Confiance: {detail['confidence']:.1%} | Texte: {detail['text'][:80]}")
+        logger.info("=" * 60)
 
         if not raw_text.strip():
             logger.warning("Aucun texte extrait par PaddleOCR")
-            return {
-                "success"  : False,
-                "doc_type" : doc_type,
-                "raw_text" : "",
-                "data"     : {},
-                "error"    : "Aucun texte lisible détecté dans l'image",
-                "timing"   : {
+            response = {
+                "success": False,
+                "doc_type": doc_type,
+                "raw_text": "",
+                "data": {},
+                "error": "Aucun texte lisible détecté dans l'image",
+                "timing": {
                     "preprocess_s": round(t_preprocess, 2),
-                    "ocr_s"       : round(t_ocr, 2),
-                    "llm_s"       : 0,
-                    "total_s"     : round(time.time() - t_start, 2),
+                    "ocr_s": round(t_ocr, 2),
+                    "llm_s": 0,
+                    "total_s": round(time.time() - t_start, 2),
                 }
             }
+            if verbose:
+                response["ocr_details"] = ocr_details
+            return response
 
         # Groq LLM
         t0 = time.time()
@@ -486,18 +522,28 @@ async def extract_document(
         logger.info(f"=== Extraction terminée en {t_total:.2f}s total ===")
         logger.info(f"Données extraites: {cleaned_data}")
 
-        return {
-            "success"  : True,
-            "doc_type" : doc_type,
-            "raw_text" : raw_text,
-            "data"     : cleaned_data,
-            "timing"   : {
+        response = {
+            "success": True,
+            "doc_type": doc_type,
+            "raw_text": raw_text,
+            "data": cleaned_data,
+            "timing": {
                 "preprocess_s": round(t_preprocess, 2),
-                "ocr_s"       : round(t_ocr, 2),
-                "llm_s"       : round(t_llm, 2),
-                "total_s"     : round(t_total, 2),
+                "ocr_s": round(t_ocr, 2),
+                "llm_s": round(t_llm, 2),
+                "total_s": round(t_total, 2),
             }
         }
+        
+        # Ajouter les détails OCR si demandé
+        if verbose:
+            response["ocr_details"] = ocr_details
+            response["ocr_statistics"] = {
+                "total_lines": len(ocr_details),
+                "avg_confidence": round(sum(d["confidence"] for d in ocr_details) / len(ocr_details), 3) if ocr_details else 0,
+            }
+        
+        return response
 
     except Exception as e:
         logger.error(f"Extraction error: {e}", exc_info=True)
@@ -512,12 +558,13 @@ async def test_paddle(file: UploadFile = File(...)):
     """
     try:
         image_bytes = await file.read()
-        img_array   = preprocess_image(image_bytes)
-        raw_text    = extract_text_with_paddle(img_array)
+        img_array = preprocess_image(image_bytes)
+        # ✅ CORRECTION : ignorer le second élément du tuple
+        raw_text, _ = extract_text_with_paddle(img_array)
         return {
-            "success"  : True,
-            "raw_text" : raw_text,
-            "lines"    : raw_text.split("\n") if raw_text else [],
+            "success": True,
+            "raw_text": raw_text,
+            "lines": raw_text.split("\n") if raw_text else [],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

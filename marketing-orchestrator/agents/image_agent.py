@@ -3,10 +3,14 @@
 
 import httpx
 import os
+import time
+import logging
 import base64
 from PIL import Image, ImageDraw, ImageFont
 import io
 from typing import Optional
+
+logger = logging.getLogger("marketing_orchestrator")
 
 # Dimensions optimales par plateforme
 PLATFORM_SPECS = {
@@ -30,10 +34,18 @@ async def run(
     image_url = vehicle_data.get("image_url")
     results   = {}
 
+    logger.info(
+        f"[MARKETING][IMAGE] ▶ START | platforms={platforms} | "
+        f"source={'image véhicule' if image_url else 'placeholder généré'} | "
+        f"promo={promo_price or '—'}"
+    )
+
     for platform in platforms:
+        t0 = time.time()
+        spec = PLATFORM_SPECS.get(platform, PLATFORM_SPECS["facebook"])
+
         try:
             if image_url:
-                # Télécharger et optimiser l'image existante
                 processed = await _process_existing_image(
                     image_url    = image_url,
                     platform     = platform,
@@ -41,21 +53,35 @@ async def run(
                     promo_price  = promo_price,
                 )
             else:
-                # Générer un visuel placeholder
                 processed = _generate_placeholder(
                     platform     = platform,
                     vehicle_data = vehicle_data,
                     promo_price  = promo_price,
                 )
 
+            dur = round((time.time() - t0) * 1000)
             results[platform] = processed
 
+            logger.info(
+                f"[MARKETING][IMAGE] ✓ platform={platform} | {dur}ms | "
+                f"size={spec['width']}x{spec['height']} ({spec['ratio']}) | "
+                f"watermark=OK | "
+                f"{'badge_promo=' + str(int(promo_price)) + 'MAD' if promo_price else 'badge_promo=—'} | "
+                f"{'généré' if processed.get('generated') else 'image traitée'}"
+            )
+
         except Exception as e:
+            dur = round((time.time() - t0) * 1000)
             results[platform] = {
                 "success":   False,
                 "error":     str(e),
-                "image_url": image_url,  # fallback — image originale
+                "image_url": image_url,
             }
+            logger.warning(
+                f"[MARKETING][IMAGE] ✗ platform={platform} | {dur}ms | erreur={e}"
+            )
+
+    logger.info(f"[MARKETING][IMAGE] ▶ END | {len(results)} visuel(s) traité(s)")
 
     return {"images": results}
 
@@ -75,13 +101,24 @@ async def _process_existing_image(
             raise Exception(f"Impossible de télécharger l'image: {image_url}")
         image_bytes = resp.content
 
+    logger.info(
+        f"[MARKETING][IMAGE]   téléchargement OK | platform={platform} | "
+        f"{len(image_bytes)} bytes"
+    )
+
     # Ouvrir avec Pillow
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    orig_size = img.size
 
     # Redimensionner selon la plateforme
     spec   = PLATFORM_SPECS.get(platform, PLATFORM_SPECS["facebook"])
     target = (spec["width"], spec["height"])
     img    = _smart_resize(img, target)
+
+    logger.info(
+        f"[MARKETING][IMAGE]   resize {orig_size[0]}x{orig_size[1]} → "
+        f"{img.width}x{img.height} | platform={platform}"
+    )
 
     # Ajouter le watermark AutoRent
     img = _add_watermark(img, platform)
@@ -89,6 +126,10 @@ async def _process_existing_image(
     # Ajouter le badge prix si promo
     if promo_price:
         img = _add_price_badge(img, promo_price, vehicle_data.get("price_per_day"))
+        logger.info(
+            f"[MARKETING][IMAGE]   badge prix ajouté: {int(promo_price)} MAD/jour "
+            f"(orig: {vehicle_data.get('price_per_day')} MAD) | platform={platform}"
+        )
 
     # Ajouter le bandeau infos véhicule en bas
     img = _add_vehicle_info_banner(img, vehicle_data, platform)
@@ -102,6 +143,11 @@ async def _process_existing_image(
     filename = f"marketing_{vehicle_data.get('id', 'xxx')}_{platform}.jpg"
     save_path = f"/tmp/{filename}"
     img.save(save_path, format="JPEG", quality=90)
+
+    logger.info(
+        f"[MARKETING][IMAGE]   sauvegardé: {save_path} | "
+        f"taille finale={len(img_base64)} bytes (base64)"
+    )
 
     return {
         "success":    True,
@@ -125,6 +171,11 @@ def _generate_placeholder(
     spec   = PLATFORM_SPECS.get(platform, PLATFORM_SPECS["facebook"])
     width  = spec["width"]
     height = spec["height"]
+
+    logger.info(
+        f"[MARKETING][IMAGE]   génération placeholder | platform={platform} | "
+        f"{width}x{height} | véhicule={vehicle_data.get('brand')} {vehicle_data.get('model')}"
+    )
 
     # Fond dégradé bleu-violet (couleurs AutoRent)
     img  = Image.new("RGB", (width, height))

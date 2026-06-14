@@ -4,9 +4,15 @@ from pydantic import BaseModel
 from typing import List, Optional
 import httpx
 import os
+import time
+import logging
+import asyncio
 
 from agents.marketing_orchestrator import process_marketing_campaign
-from agents import content_agent   # ← import manquant
+from agents import content_agent, image_agent
+
+logger = logging.getLogger("marketing_orchestrator")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
 
 app = FastAPI(title="AutoRent Marketing Orchestrator")
 
@@ -43,7 +49,9 @@ async def _fetch_vehicle(vehicule_id: int) -> dict | None:
     VEHICLE_SERVICE_URL = os.getenv("VEHICLE_SERVICE_URL", "http://vehicle-service")
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
+            logger.info(f"[MARKETING] GET {VEHICLE_SERVICE_URL}/api/vehicules/{vehicule_id}")
             resp = await client.get(f"{VEHICLE_SERVICE_URL}/api/vehicules/{vehicule_id}")
+        logger.info(f"[MARKETING] vehicle-service → status={resp.status_code}")
         if resp.status_code == 200:
             v = resp.json()
             return {
@@ -63,7 +71,7 @@ async def _fetch_vehicle(vehicule_id: int) -> dict | None:
             }
         return None
     except Exception as e:
-        print(f"[_fetch_vehicle] Error: {e}")
+        logger.error(f"[MARKETING] _fetch_vehicle erreur: {e}")
         return None
 
 
@@ -71,25 +79,51 @@ async def _fetch_vehicle(vehicule_id: int) -> dict | None:
 
 @app.post("/marketing/preview")
 async def preview_campaign(req: CampaignRequest):
-    """Génère le contenu sans publier — pour aperçu et édition."""
+    """Génère le contenu + visuels sans publier — pour aperçu et édition."""
+
+    logger.info("=" * 65)
+    logger.info(
+        f"[MARKETING] === PHASE 1: PREVIEW === owner_id={req.owner_id} | "
+        f"vehicule_id={req.vehicule_id} | platforms={req.platforms} | "
+        f"tone={req.tone} | lang={req.language}"
+    )
+    logger.info("=" * 65)
 
     vehicle_data = await _fetch_vehicle(req.vehicule_id)
     if not vehicle_data:
+        logger.error(f"[MARKETING] 404 — véhicule introuvable id={req.vehicule_id}")
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
 
-    # Générer le contenu via ContentAgent
-    contents = await content_agent.run(vehicle_data, {
-        "platforms":   req.platforms,
-        "tone":        req.tone,
-        "language":    req.language,
-        "promo_price": req.promo_price,
-    })
+    logger.info(
+        f"[MARKETING] Véhicule récupéré: {vehicle_data['brand']} {vehicle_data['model']} "
+        f"({vehicle_data.get('year')}) — {vehicle_data.get('price_per_day')} MAD/jour "
+        f"— ville={vehicle_data.get('city')}"
+    )
+
+    # Générer le contenu et les visuels en parallèle
+    logger.info("[MARKETING] → ContentAgent + ImageAgent (parallèle)")
+    t0 = time.time()
+    contents, images = await asyncio.gather(
+        content_agent.run(vehicle_data, {
+            "platforms":   req.platforms,
+            "tone":        req.tone,
+            "language":    req.language,
+            "promo_price": req.promo_price,
+        }),
+        image_agent.run(vehicle_data, req.platforms, req.promo_price),
+    )
+    dur = round((time.time() - t0) * 1000)
+    logger.info(f"[MARKETING] ContentAgent + ImageAgent terminés en {dur}ms")
+
+    logger.info(f"[MARKETING] === PHASE 1 TERMINÉE === preview retournée au frontend")
+    logger.info("=" * 65)
 
     return {
         "success":      True,
         "vehicle":      f"{vehicle_data['brand']} {vehicle_data['model']}",
         "image_url":    vehicle_data.get("image_url"),
         "contents":     contents.get("contents", {}),
+        "images":       images.get("images", {}),
     }
 
 

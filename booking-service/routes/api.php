@@ -48,7 +48,15 @@ Route::middleware('auth.service')->group(function () {
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES INTERNES — appelées par vehicle-service (sans auth)
 // ══════════════════════════════════════════════════════════════════════════════
-Route::get('/internal/demand-history', [BookingController::class, 'demandHistory']);
+// Récupérer l'historique des réservations pour analytics
+Route::get('/internal/owner/{ownerId}/bookings-analytics', [BookingController::class, 'ownerBookingsAnalytics'])
+    ->name('internal.owner.bookings-analytics');
 
+// Récupérer la liste des clients du propriétaire
+Route::get('/internal/owner/{ownerId}/clients', [BookingController::class, 'ownerClients'])
+    ->name('internal.owner.clients');
+
+// Récupérer l'historique de demande pour prédiction (déjà existante)
+Route::get('/internal/demand-history', [BookingController::class, 'demandHistory']);
 Route::get('/vehicules/{id}/active-bookings', [BookingController::class, 'activeBookings']);
 Route::get('/vehicules/{id}/booked-dates',    [BookingController::class, 'bookedDates']);
